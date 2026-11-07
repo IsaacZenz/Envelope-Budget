@@ -4,6 +4,6 @@
 // supabase/schema.sql keeps each person's budget private.
 // NEVER put the service_role / secret key here.
 window.BUDGET_CONFIG = {
-  supabaseUrl: 'https://YOUR-PROJECT-ID.supabase.co',
-  supabaseAnonKey: 'YOUR-ANON-OR-PUBLISHABLE-KEY'
+  supabaseUrl: 'https://ncjpkpaitdluwfqkpyal.supabase.co',
+  supabaseAnonKey: 'sb_publishable_4vsB607G2p-5Dwl7VFGa8w_VVjQuekC'
 };
