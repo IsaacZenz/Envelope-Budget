@@ -1,0 +1,1239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#001208">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Envelope Budget</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Pixelify+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: one phone-width column of 16-bit menu windows over a dithered parallax lake scene; HUD box for the total; tab bar is a black console strip.
+   Single visual world (16-bit console), so one theme. Window frames and the scene are drawn at load on canvas with a limited palette. */
+:root {
+  --void: #001208;
+  --white: #ffffff; --ice: #b9f5c9; --sky: #00ff7f;
+  --yellow: #7fff00; --gold: #3f9900;
+  --green: #6dff6d; --red: #ff9292; --gray: #a9c9a9;
+  --font-px: "Press Start 2P", "Courier New", monospace;
+  --font-ui: "Pixelify Sans", "Trebuchet MS", system-ui, sans-serif;
+  --tabbar-h: 78px;
+  --frame: none; --frame-ok: none;
+  --notch: polygon(3px 0, calc(100% - 3px) 0, calc(100% - 3px) 3px, 100% 3px, 100% calc(100% - 3px), calc(100% - 3px) calc(100% - 3px), calc(100% - 3px) 100%, 3px 100%, 3px calc(100% - 3px), 0 calc(100% - 3px), 0 3px, 3px 3px);
+  --win-blue: linear-gradient(180deg, #1f8f55 0 18%, #178050 18% 36%, #0f724a 36% 54%, #006a4e 54% 72%, #00573f 72% 100%);
+  --win-hud: linear-gradient(180deg, #002412 0 30%, #00190c 30% 60%, #000f06 60% 100%);
+  --win-ok: linear-gradient(180deg, #3f9e14 0 30%, #348a0f 30% 60%, #2a750a 60% 100%);
+  --win-zero: linear-gradient(180deg, #5e7a5e 0 30%, #526b52 30% 60%, #465c46 60% 100%);
+  --win-bad: linear-gradient(180deg, #b62424 0 30%, #a41212 30% 60%, #920000 60% 100%);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { min-height: 100%; }
+body {
+  background: var(--void); color: var(--white); font-family: var(--font-ui); font-size: 17px; line-height: 1.4;
+  -webkit-font-smoothing: none;
+}
+#bg { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; image-rendering: pixelated; display: block; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 3px solid var(--yellow); outline-offset: 2px; }
+.num { font-variant-numeric: tabular-nums; }
+.px { font-family: var(--font-px); font-weight: 400; }
+
+/* Windows: pixel frame drawn on canvas, stepped gradient fill */
+.win {
+  border: 8px solid #fff; border-image: var(--frame) 4 / 8px stretch; background-clip: padding-box;
+  background-image: var(--win-blue); background-color: #006a4e;
+  image-rendering: pixelated; filter: drop-shadow(4px 4px 0 rgba(0, 0, 0, .7));
+  text-shadow: 2px 2px 0 #000; color: var(--white);
+}
+.win.hud { background-image: var(--win-hud); background-color: #000f06; }
+.win.ok { background-image: var(--win-ok); background-color: #2a750a; border-color: #7fff00; border-image: var(--frame-ok) 4 / 8px stretch; filter: drop-shadow(4px 4px 0 rgba(0, 0, 0, .7)) drop-shadow(0 0 6px rgba(127, 255, 0, .45)); }
+.win.zero { background-image: var(--win-zero); background-color: #465c46; }
+.win.bad { background-image: var(--win-bad); background-color: #920000; }
+
+.app {
+  position: relative; z-index: 1;
+  max-width: 480px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 14px calc(var(--tabbar-h) + 28px + env(safe-area-inset-bottom, 0px));
+  display: flex; flex-direction: column; gap: 16px;
+}
+.topline { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 4px; }
+.brand { font-family: var(--font-px); font-size: 13px; line-height: 1.5; margin: 0; color: var(--yellow); text-transform: uppercase; text-shadow: 3px 3px 0 #000; }
+.chip { font-family: var(--font-px); font-size: 9px; padding: 7px 10px; background: #000; color: var(--ice); box-shadow: inset 0 0 0 3px #2e6b45; clip-path: var(--notch); white-space: nowrap; text-transform: uppercase; }
+.chip.sync { color: var(--green); box-shadow: inset 0 0 0 3px #4cbb17; }
+
+.banner { font-size: 15px; font-weight: 600; padding: 10px 12px; margin: 0; }
+
+.eyebrow { margin: 0; font-family: var(--font-px); font-size: 10px; line-height: 1.6; text-transform: uppercase; color: var(--ice); }
+
+/* Total: HUD box */
+.total { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px; }
+.total-amt {
+  font-family: var(--font-px); font-size: clamp(18px, 6.4vw, 28px); line-height: 1.25; margin: 0; overflow-wrap: anywhere;
+  color: var(--yellow); text-shadow: 3px 3px 0 #1f5200;
+}
+.total-amt.neg { color: var(--red); text-shadow: 3px 3px 0 #6d0000; }
+.total-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+
+/* Ready to Assign */
+.rta { padding: 10px 14px 12px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 12px; }
+.rta .eyebrow { color: var(--white); }
+.rta-amt { font-family: var(--font-px); font-size: 17px; margin: 0; grid-column: 2; grid-row: 1 / span 2; }
+.rta-hint { margin: 0; font-size: 15px; }
+
+/* Buttons: chunky bevelled keys */
+.btn {
+  border: 3px solid #000; border-radius: 0; clip-path: var(--notch); padding: 9px 18px; min-height: 48px;
+  font-family: var(--font-ui); font-weight: 700; font-size: 17px; color: #000; text-shadow: none;
+  background: #dbdbdb; box-shadow: inset -3px -3px 0 #929292, inset 3px 3px 0 #fff;
+}
+.btn.primary { background: var(--yellow); box-shadow: inset -3px -3px 0 var(--gold), inset 3px 3px 0 #c6ff8a; }
+.btn.danger { background: #db2424; color: #fff; text-shadow: 2px 2px 0 #000; box-shadow: inset -3px -3px 0 #920000, inset 3px 3px 0 #ff6d6d; }
+.btn.danger[data-armed] { background: #ff4949; }
+.btn.small { min-height: 40px; padding: 6px 14px; font-size: 15px; }
+.btn:active { transform: translateY(2px); box-shadow: inset 3px 3px 0 rgba(0, 0, 0, .3); }
+.btn:disabled { opacity: .55; cursor: default; }
+.link { background: none; border: 0; padding: 4px 0; color: var(--white); text-decoration: underline; font-size: 15px; font-weight: 600; }
+
+/* Categories: a menu list with dot leaders and a blinking cursor */
+.section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 4px; }
+.section-head h2 { margin: 0; font-family: var(--font-px); font-weight: 400; font-size: 12px; line-height: 1.4; color: var(--white); text-transform: uppercase; text-shadow: 2px 2px 0 #000; background: #000; padding: 8px 10px; clip-path: var(--notch); box-shadow: inset 0 0 0 3px #2e6b45; }
+.cats { list-style: none; margin: 0; padding: 4px 6px; }
+.cat + .cat { border-top: 3px solid rgba(0, 0, 0, .35); }
+.cat button {
+  width: 100%; border: 0; background: none; text-align: left; padding: 12px 6px; min-height: 56px; text-shadow: inherit;
+  display: flex; align-items: center; gap: 8px;
+}
+.cur { flex: none; width: 9px; height: 15px; background: var(--yellow); visibility: hidden;
+  clip-path: polygon(0 0, 3px 0, 3px 3px, 6px 3px, 6px 6px, 9px 6px, 9px 9px, 6px 9px, 6px 12px, 3px 12px, 3px 15px, 0 15px); }
+.cat button:hover .cur, .cat button:focus-visible .cur, .cat button:active .cur { visibility: visible; animation: blink .8s steps(1) infinite; }
+.cat button:focus-visible { outline-offset: -3px; }
+@keyframes blink { 50% { opacity: 0; } }
+.cat-name { flex: 0 1 auto; min-width: 0; font-weight: 700; font-size: 19px; overflow-wrap: anywhere; }
+.lead { flex: 1 1 16px; min-width: 16px; align-self: flex-end; margin-bottom: 9px; height: 3px;
+  background: linear-gradient(90deg, var(--sky) 50%, transparent 50%) 0 0 / 6px 3px repeat-x; }
+.cat-bal { flex: none; font-family: var(--font-px); font-size: 13px; }
+.cat-bal.neg { color: var(--red); }
+.cat-bal.zero { color: var(--gray); }
+
+.empty { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 12px; }
+.empty h2 { margin: 0; font-family: var(--font-px); font-weight: 400; font-size: 13px; line-height: 1.6; color: #98fb98; text-transform: uppercase; }
+.empty ol { margin: 0; padding-left: 22px; display: grid; gap: 4px; }
+.empty .btns { display: flex; flex-wrap: wrap; gap: 10px; }
+.muted-note { margin: 0; color: var(--white); font-size: 15px; text-shadow: 2px 2px 0 #000; }
+
+/* Transactions */
+.tx-list { list-style: none; margin: 0; padding: 0; }
+.tx { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 10px 0; border-top: 3px solid rgba(0, 0, 0, .35); align-items: start; }
+.tx:first-child { border-top: 0; }
+.tx-title { font-weight: 700; overflow-wrap: anywhere; }
+.tx-meta { font-size: 14px; color: var(--ice); overflow-wrap: anywhere; }
+.tx-extra { font-size: 14px; color: var(--ice); grid-column: 1; }
+.tx-amt { font-family: var(--font-px); font-size: 12px; line-height: 1.8; text-align: right; grid-column: 2; grid-row: 1; }
+.tx-amt.pos { color: var(--green); }
+.tx-amt.neg { color: var(--red); }
+.tx-amt.neutral { color: var(--ice); }
+.tx-side { grid-column: 2; grid-row: 2 / span 2; display: flex; justify-content: flex-end; }
+.tx-del { border: 0; background: none; color: var(--ice); font-size: 14px; font-weight: 700; padding: 4px 0 4px 8px; text-decoration: underline; text-shadow: inherit; }
+.tx-del[data-armed] { color: var(--red); }
+.tx-locked { font-size: 13px; color: var(--gray); }
+
+.history { padding: 4px 12px 6px; }
+.history-foot { display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: 4px; }
+.count { font-family: var(--font-px); font-size: 10px; margin: 0; color: var(--white); text-shadow: 2px 2px 0 #000; }
+.danger-zone { margin-top: 24px; padding-top: 16px; border-top: 3px dashed rgba(255, 255, 255, .35); display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+
+/* Tab bar: console strip */
+.tabbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; background: #000;
+  border-top: 3px solid #fff; box-shadow: inset 0 3px 0 #4f9a69;
+  padding: 12px max(16px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+}
+.tabbar-inner { max-width: 480px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.tab {
+  border: 3px solid #000; clip-path: var(--notch); min-height: 48px; font-family: var(--font-px); font-size: 11px; text-transform: uppercase;
+  background: #2e6b45; color: #dcffe4; box-shadow: inset -3px -3px 0 #174a2b, inset 3px 3px 0 #4f9a69;
+}
+.tab[aria-current="page"] { background: var(--yellow); color: #000; box-shadow: inset -3px -3px 0 var(--gold), inset 3px 3px 0 #c6ff8a; }
+
+/* Sheet */
+.backdrop { position: fixed; inset: 0; z-index: 40; background: rgba(0, 20, 8, .6); display: flex; align-items: flex-end; justify-content: center; opacity: 0; transition: opacity .15s steps(3); }
+.backdrop.open { opacity: 1; }
+.sheet {
+  width: 100%; max-width: 520px; max-height: calc(100% - 24px - env(safe-area-inset-top, 0px)); overflow-y: auto; overscroll-behavior: contain;
+  padding: 10px max(12px, env(safe-area-inset-right, 0px)) calc(18px + env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
+  transform: translateY(24px); transition: transform .15s steps(3);
+  display: flex; flex-direction: column; gap: 14px; filter: none;
+}
+.backdrop.open .sheet { transform: none; }
+.grabber { width: 42px; height: 6px; background: var(--ice); align-self: center; box-shadow: 2px 2px 0 #000; }
+.sheet-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.sheet-head h2 { margin: 4px 0 0; font-family: var(--font-px); font-weight: 400; font-size: 15px; line-height: 1.5; overflow-wrap: anywhere; color: #98fb98; }
+.icon-btn { width: 44px; min-height: 44px; padding: 0; font-size: 22px; line-height: 1; flex: none; }
+.sheet-bal { margin: -4px 0 0; font-family: var(--font-px); font-size: 22px; line-height: 1.3; color: var(--white); }
+.sheet-bal.neg { color: var(--red); }
+.sheet h3 { margin: 6px 0 0; font-family: var(--font-px); font-weight: 400; font-size: 10px; text-transform: uppercase; color: var(--ice); }
+
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.seg button {
+  border: 3px solid #000; clip-path: var(--notch); min-height: 44px; font-weight: 700; text-shadow: none;
+  background: #2e6b45; color: #fff; box-shadow: inset -3px -3px 0 #174a2b, inset 3px 3px 0 #4f9a69;
+}
+.seg button[aria-pressed="true"] { background: var(--yellow); color: #000; box-shadow: inset -3px -3px 0 var(--gold), inset 3px 3px 0 #c6ff8a; }
+
+.form { display: flex; flex-direction: column; gap: 12px; }
+.field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.field > span { font-size: 15px; font-weight: 700; color: var(--ice); }
+.field em { font-style: normal; font-weight: 400; }
+.field input, .field select {
+  width: 100%; min-width: 0; font-size: 17px; min-height: 48px; padding: 10px 12px; border: 0; border-radius: 0;
+  background: #000; color: #fff; caret-color: var(--yellow); text-shadow: none; clip-path: var(--notch);
+  box-shadow: inset 0 0 0 3px #4f9a69;
+}
+.field input:focus, .field select:focus { outline: none; box-shadow: inset 0 0 0 3px var(--yellow); }
+.field input::placeholder { color: #4f9a69; }
+.money { position: relative; }
+.money span { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-family: var(--font-px); font-size: 18px; color: var(--yellow); pointer-events: none; z-index: 1; }
+.money input { padding-left: 36px; font-family: var(--font-px); font-size: 18px; min-height: 56px; color: var(--yellow); }
+.row2 { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 10px; }
+.hint { margin: 0; font-size: 15px; color: var(--ice); }
+.err { margin: 0; font-size: 15px; color: var(--red); font-weight: 700; }
+.err:empty { display: none; }
+.actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.actions .btn { flex: 1 1 140px; }
+.fix { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 10px 12px; background: #000; clip-path: var(--notch); box-shadow: inset 0 0 0 3px #db2424; }
+.fix p { margin: 0; font-weight: 700; color: var(--red); }
+.cover { padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; filter: none; }
+.cover p { margin: 0; }
+.cover .warn { color: #dcffe4; font-weight: 700; font-size: 15px; }
+
+.toast {
+  position: fixed; left: 50%; bottom: calc(var(--tabbar-h) + 16px + env(safe-area-inset-bottom, 0px)); z-index: 60;
+  transform: translate(-50%, 12px); opacity: 0; transition: opacity .15s steps(3), transform .15s steps(3);
+  padding: 8px 14px; font-size: 15px; font-weight: 700; max-width: calc(100% - 32px); pointer-events: none;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+@media (prefers-reduced-motion: reduce) {
+  .backdrop, .sheet, .toast { transition: none; }
+  .cat button:hover .cur, .cat button:focus-visible .cur, .cat button:active .cur { animation: none; }
+}
+
+/* Page basics (previously supplied by the hosting skeleton) */
+[hidden] { display: none !important; }
+html { padding-top: env(safe-area-inset-top, 0px); }
+body { margin: 0; }
+
+/* Sign-in screen */
+.auth { display: flex; flex-direction: column; gap: 16px; padding-top: 6vh; }
+.auth-win { padding: 14px 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+.auth-win h2 { margin: 0; font-family: var(--font-px); font-weight: 400; font-size: 14px; line-height: 1.5; color: #98fb98; text-transform: uppercase; }
+.auth-win p { margin: 0; }
+.auth-msg { margin: 0; font-weight: 700; font-size: 15px; }
+.auth-msg.err { color: var(--red); }
+.auth-msg.ok { color: var(--green); }
+.auth-msg:empty { display: none; }
+.check { display: flex; align-items: center; gap: 10px; font-size: 15px; color: var(--ice); min-height: 32px; }
+.check input { width: 20px; height: 20px; accent-color: #7fff00; }
+.auth-links { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.seg.two { grid-template-columns: 1fr 1fr; }
+.account { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; margin-bottom: 12px; }
+.account strong { overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+
+<canvas id="bg" aria-hidden="true"></canvas>
+<div class="app">
+  <div class="topline">
+    <p class="brand">Envelope Budget</p>
+    <span class="chip" id="mode-chip">Loading</span>
+  </div>
+  <p class="banner win bad" id="banner" hidden></p>
+
+  <section id="view-auth" class="auth" hidden>
+    <div class="win auth-win" id="auth-win"></div>
+  </section>
+
+  <section id="view-budget" style="display:flex;flex-direction:column;gap:16px">
+    <div class="total win hud">
+      <p class="eyebrow">Total balance</p>
+      <div class="total-row">
+        <p class="total-amt num" id="total-amt">$0.00</p>
+        <button class="btn small primary" data-action="income" id="btn-income">+ Add income</button>
+      </div>
+    </div>
+
+    <div class="rta win zero" id="rta">
+      <p class="eyebrow">Ready to Assign</p>
+      <p class="rta-amt num" id="rta-amt">$0.00</p>
+      <p class="rta-hint" id="rta-hint">Add income to get started.</p>
+    </div>
+
+    <div class="section-head">
+      <h2>Categories</h2>
+      <button class="btn small" data-action="new-cat" id="btn-new-cat">+ New category</button>
+    </div>
+    <ul class="cats win" id="cats" hidden></ul>
+    <div class="empty win" id="empty" hidden>
+      <h2>Start your budget</h2>
+      <ol>
+        <li>Add income. It lands in Ready to Assign.</li>
+        <li>Create categories like Groceries or Gas.</li>
+        <li>Assign dollars to each one, then record spending.</li>
+      </ol>
+      <div class="btns">
+        <button class="btn primary" data-action="income">Add income</button>
+        <button class="btn" data-action="example" id="btn-example">Use an example budget</button>
+      </div>
+    </div>
+    <p class="muted-note" id="no-cats" hidden>No categories yet. Create one to start assigning dollars.</p>
+  </section>
+
+  <section id="view-history" hidden style="flex-direction:column;gap:12px">
+    <div class="section-head"><h2>History</h2></div>
+    <div class="history win"><ul class="tx-list" id="history-list"></ul></div>
+    <p class="muted-note" id="history-empty" hidden>No transactions yet.</p>
+    <div class="history-foot">
+      <p class="count num" id="history-count"></p>
+      <button class="btn small" data-action="more" id="btn-more" hidden>Show 25 more</button>
+    </div>
+    <div class="danger-zone">
+      <div class="account">
+        <p class="muted-note">Signed in as <strong id="acct-email"></strong></p>
+        <button class="btn small" data-action="signout">Sign out</button>
+      </div>
+      <p class="muted-note">Testing tools</p>
+      <button class="btn small danger" data-action="erase" id="btn-erase">Erase all budget data</button>
+    </div>
+  </section>
+</div>
+
+<nav class="tabbar" id="tabbar" aria-label="Views">
+  <div class="tabbar-inner">
+    <button class="tab" data-action="tab" data-tab="budget" aria-current="page" id="tab-budget">Budget</button>
+    <button class="tab" data-action="tab" data-tab="history" id="tab-history">History</button>
+  </div>
+</nav>
+
+<div class="backdrop" id="backdrop" hidden>
+  <div class="sheet win" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title"></div>
+</div>
+<div class="toast win hud" id="toast" role="status" aria-live="polite"></div>
+
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+/* ENGINE START — pure money logic, no DOM */
+function parseCents(input) {
+  const s = String(input == null ? '' : input).trim().replace(/[$,\s]/g, '');
+  if (!s || s === '.' || !/^\d*(\.\d{0,2})?$/.test(s)) return null;
+  const parts = s.split('.');
+  const whole = parseInt(parts[0] || '0', 10);
+  const frac = parseInt(((parts[1] || '') + '00').slice(0, 2), 10);
+  if (whole > 99999999) return null;
+  const c = whole * 100 + frac;
+  return c > 0 ? c : null;
+}
+function fmt(c) {
+  const neg = c < 0; c = Math.abs(Math.round(c));
+  const d = Math.floor(c / 100), r = String(c % 100).padStart(2, '0');
+  return (neg ? '−' : '') + '$' + d.toLocaleString('en-US') + '.' + r;
+}
+// Balances are always rebuilt from the transaction list, so deleting a
+// transaction undoes it exactly. Ready to Assign = Total − active category balances,
+// which means a deleted category's leftover (or shortfall) returns to Ready to Assign.
+function compute(categories, transactions) {
+  const bal = {};
+  for (const c of categories) bal[c.id] = 0;
+  const add = (id, v) => { if (id) bal[id] = (bal[id] || 0) + v; };
+  let total = 0;
+  for (const t of transactions) {
+    const a = t.amount | 0;
+    if (t.type === 'income') total += a;
+    else if (t.type === 'assign') add(t.cat, a);
+    else if (t.type === 'spend') { total -= a; add(t.cat, -a + (t.covered | 0)); }
+    else if (t.type === 'move') { add(t.cat, -a); add(t.to, a); }
+  }
+  let assigned = 0;
+  for (const c of categories) if (!c.deletedAt) assigned += bal[c.id] || 0;
+  return { total, bal, rta: total - assigned };
+}
+function shortfallFor(balance, amount) {
+  const after = balance - amount;
+  return after < 0 ? Math.min(amount, -after) : 0;
+}
+function sortTx(list) {
+  return list.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.createdAt || 0) - (a.createdAt || 0));
+}
+/* ENGINE END */
+
+/* ---------- 16-bit window frames and dithered lake scene, drawn on canvas ---------- */
+const ART = (() => {
+  function rng(seed) {
+    return function () {
+      seed = seed + 0x6D2B79F5 | 0;
+      let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  const RGB = {};
+  const hex = h => RGB[h] || (RGB[h] = [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]);
+  const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(v => (v + .5) / 16);
+  const bayer = (x, y) => BAYER[(y & 3) * 4 + (x & 3)];
+  // Ordered-dither between palette steps, t in 0..1
+  function dither(pal, t, x, y) {
+    t = Math.max(0, Math.min(.9999, t)) * (pal.length - 1);
+    const i = Math.floor(t);
+    return (t - i) > bayer(x, y) ? pal[Math.min(i + 1, pal.length - 1)] : pal[i];
+  }
+  function surface(w, h) {
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const x = c.getContext('2d'), img = x.createImageData(w, h);
+    return {
+      c, x, img, w, h,
+      set(px, py, col) {
+        if (px < 0 || py < 0 || px >= w || py >= h) return;
+        const k = (py * w + px) * 4, v = hex(col);
+        img.data[k] = v[0]; img.data[k + 1] = v[1]; img.data[k + 2] = v[2]; img.data[k + 3] = 255;
+      },
+      done() { x.putImageData(img, 0, 0); return c; }
+    };
+  }
+
+  // Window frame for border-image: rounded pixel corners, black / white / lilac / black rings
+  function frame(rings) {
+    const s = surface(12, 12);
+    for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) {
+      const dx = Math.min(x, 11 - x), dy = Math.min(y, 11 - y);
+      let ring;
+      if (dx < 4 && dy < 4) ring = Math.floor(4 - Math.hypot(3.5 - dx, 3.5 - dy));
+      else ring = Math.min(dx, dy);
+      if (ring >= 0 && ring < 4) s.set(x, y, rings[ring]);
+    }
+    return s.done().toDataURL('image/png');
+  }
+  function skin() {
+    try {
+      const st = document.documentElement.style;
+      st.setProperty('--frame', `url("${frame(['#000000', '#ffffff', '#98fb98', '#000000'])}")`);
+      st.setProperty('--frame-ok', `url("${frame(['#000000', '#7fff00', '#c6ff8a', '#000000'])}")`);
+    } catch (e) {}
+  }
+
+  const SKY = ['#000f06', '#00200f', '#003318', '#004d2a', '#006a4e', '#1e8f6a', '#29ab87', '#50c878', '#98fb98', '#dcffe4'];
+  const WATER = ['#50c8a0', '#009b8d', '#008878', '#006a62', '#00504a'];
+  const MOUNT = ['#9dc19d', '#8fbc8f', '#5f9e6e', '#2e8b57', '#1f6b45'];
+  const HILL = ['#4cbb17', '#228b22', '#006400', '#004b00'];
+
+  let canvas = null, ctx = null, L = null, raf = 0, last = 0, still = false;
+
+  function ridge(r, len, base, amp, ks) {
+    const parts = ks.map(k => ({ k, a: amp / k, p: r() * Math.PI * 2 }));
+    const out = [];
+    for (let x = 0; x < len; x++) {
+      let v = 0; for (const q of parts) v += q.a * Math.sin(q.k * Math.PI * 2 * x / len + q.p);
+      out.push(Math.round(base + v));
+    }
+    return out;
+  }
+  function cloud(s, r, cx, cy, w) {
+    const blobs = [];
+    const n = 3 + Math.floor(r() * 3);
+    for (let i = 0; i < n; i++) blobs.push({ x: cx + (i - (n - 1) / 2) * w / n * 1.1, y: cy - r() * w * .12, rad: w / n * (.7 + r() * .4) });
+    blobs.push({ x: cx, y: cy - w * .14, rad: w * .26 });
+    const minY = Math.floor(cy - w * .5), maxY = Math.ceil(cy + w * .2);
+    for (let y = minY; y <= maxY; y++) for (let x = Math.floor(cx - w * .9); x <= cx + w * .9; x++) {
+      let inside = false;
+      for (const b of blobs) if (Math.hypot(x - b.x, (y - b.y) * 1.25) <= b.rad) { inside = true; break; }
+      if (!inside || y > cy + w * .12) continue;
+      const shadeY = (y - (cy - w * .05)) / (w * .17);
+      const px = ((x % s.w) + s.w) % s.w;
+      s.set(px, y, shadeY > .55 ? '#8fd9a8' : shadeY > 0 && bayer(px, y) < shadeY * 1.6 ? '#c8f5d4' : '#ffffff');
+    }
+  }
+
+  function build() {
+    const PIX = innerWidth < 700 ? 2 : 3;
+    const W = Math.ceil(innerWidth / PIX), H = Math.ceil(innerHeight / PIX);
+    canvas.width = W; canvas.height = H;
+    const r = rng(19), hz = Math.round(H * .58);
+
+    const sky = surface(W, hz);
+    for (let y = 0; y < hz; y++) for (let x = 0; x < W; x++) sky.set(x, y, dither(SKY, Math.pow(y / hz, 1.15), x, y));
+    for (let i = 0; i < W * hz / 260; i++) {
+      const sx = Math.floor(r() * W), sy = Math.floor(r() * hz * .35);
+      sky.set(sx, sy, r() < .3 ? '#ffffff' : '#b9f5c9');
+    }
+    // Far mountains and near hills, both standing on the shoreline
+    const mh = ridge(r, W, H * .13, H * .07, [1, 2, 3, 5, 9]);
+    const hh = ridge(r, W, H * .045, H * .018, [2, 3, 7, 13]);
+    const peak = Math.max(...mh), land = surface(W, hz);
+    for (let x = 0; x < W; x++) {
+      const top = hz - mh[x];
+      for (let y = Math.max(0, top); y < hz; y++) {
+        const d = (y - top) / Math.max(1, mh[x]);
+        let col = dither(MOUNT, .15 + d * .85, x, y);
+        if (mh[x] > peak * .72 && y - top < 3 + (x % 3 === 0 ? 1 : 0)) col = '#ffffff';
+        else if (y === top) col = '#dcffe4';
+        land.set(x, y, col);
+      }
+      const ht = hz - hh[x];
+      for (let y = Math.max(0, ht); y < hz; y++) {
+        land.set(x, y, y === ht ? '#7fff00' : dither(HILL, (y - ht) / Math.max(1, hh[x]) * .9 + .1, x, y));
+      }
+    }
+    const water = surface(W, H - hz);
+    for (let y = 0; y < H - hz; y++) for (let x = 0; x < W; x++) {
+      water.set(x, y, y === 0 ? '#dcffe4' : dither(WATER, Math.pow(y / (H - hz), .6), x, y));
+    }
+    // Hill reflections, darkened and broken up
+    for (let x = 0; x < W; x++) for (let y = 1; y < Math.min(hh[x], H - hz); y++) {
+      if ((y & 1) && bayer(x, y) > .3) water.set(x, y, '#003d2a');
+    }
+    const CW = Math.max(W * 2, 320), cl = surface(CW, Math.round(hz * .7));
+    for (let i = 0; i < 6; i++) cloud(cl, r, (i + r() * .6) * CW / 6, Math.round(hz * (.22 + r() * .32)), W * (.18 + r() * .14));
+    const streaks = [];
+    for (let i = 0; i < (H - hz) / 3; i++) {
+      streaks.push({ y: hz + 2 + Math.floor(r() * (H - hz - 3)), x: r() * W, len: 2 + Math.floor(r() * 8), v: (.004 + r() * .01) * (r() < .5 ? -1 : 1), col: r() < .4 ? '#ffffff' : '#98fb98' });
+    }
+    L = { W, H, hz, sky: sky.done(), land: land.done(), water: water.done(), clouds: cl.done(), CW, streaks };
+  }
+
+  function draw(t) {
+    const { W, hz, CW } = L;
+    ctx.drawImage(L.sky, 0, 0);
+    const off = Math.floor(t * .003) % CW;
+    ctx.drawImage(L.clouds, -off, 0); ctx.drawImage(L.clouds, CW - off, 0);
+    ctx.drawImage(L.land, 0, 0);
+    ctx.drawImage(L.water, 0, hz);
+    for (const s of L.streaks) {
+      const span = W + s.len;
+      const x = ((((s.x + t * s.v) % span) + span) % span) - s.len;
+      ctx.fillStyle = s.col; ctx.fillRect(Math.floor(x), s.y, s.len, 1);
+    }
+  }
+  function loop(now) {
+    raf = 0;
+    if (document.hidden || still) return;
+    if (now - last > 66) { last = now; draw(now); }
+    raf = requestAnimationFrame(loop);
+  }
+  function scene(c) {
+    canvas = c; ctx = c.getContext('2d');
+    build();
+    still = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+    draw(performance.now());
+    if (!still && !raf) raf = requestAnimationFrame(loop);
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && canvas && !still && !raf) raf = requestAnimationFrame(loop); });
+  return { skin, scene };
+})();
+
+function today() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function fmtDate(s) {
+  if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return '';
+  const [y, m, d] = s.split('-').map(Number);
+  const nowY = new Date().getFullYear();
+  return MONTHS[m - 1] + ' ' + d + (y !== nowY ? ', ' + y : '');
+}
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+let lastTs = 0;
+function stamp() { lastTs = Math.max(Date.now(), lastTs + 1); return lastTs; }
+
+/* ---------- Storage: Supabase (same interface the app used in the prototype) ---------- */
+const rowToCat = r => ({ id: r.id, name: r.name, createdAt: Date.parse(r.created_at) || 0, deletedAt: r.deleted_at ? Date.parse(r.deleted_at) : null });
+const rowToTx = r => ({
+  id: r.id, type: r.type, amount: Number(r.amount_cents), cat: r.category_id, to: r.to_category_id,
+  covered: Number(r.covered_cents || 0), note: r.note || '', date: r.tx_date, createdAt: Date.parse(r.created_at) || 0
+});
+const txToRow = t => ({
+  type: t.type, amount_cents: t.amount, category_id: t.cat || null, to_category_id: t.to || null,
+  covered_cents: t.covered || 0, note: t.note || null, tx_date: t.date
+});
+
+function makeSupabaseStore(sb, uid) {
+  let cats = [], txs = [], cb = null, timer = null, channel = null;
+  const emit = () => { if (cb) cb({ categories: cats.slice(), transactions: txs.slice() }); };
+  async function fetchAll(table, map) {
+    const out = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await sb.from(table).select('*').order('created_at').range(from, from + 999);
+      if (error) throw error;
+      out.push(...data.map(map));
+      if (data.length < 1000) break;
+    }
+    return out;
+  }
+  async function reload() {
+    const [c, t] = await Promise.all([fetchAll('categories', rowToCat), fetchAll('transactions', rowToTx)]);
+    cats = c; txs = t; emit();
+  }
+  const soon = () => { clearTimeout(timer); timer = setTimeout(() => { reload().catch(() => {}); }, 300); };
+  const onVisible = () => { if (!document.hidden) soon(); };
+  return {
+    mode: 'cloud',
+    start(onData, onError, onFresh) {
+      cb = onData;
+      reload().then(onFresh, onError);
+      // Live updates from your other devices
+      channel = sb.channel('budget-' + uid)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions', filter: 'user_id=eq.' + uid }, soon)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'categories', filter: 'user_id=eq.' + uid }, soon)
+        .subscribe();
+      document.addEventListener('visibilitychange', onVisible);
+    },
+    stop() {
+      cb = null; clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+      if (channel) { sb.removeChannel(channel); channel = null; }
+    },
+    async addCategory(name) {
+      const { data, error } = await sb.from('categories').insert({ name }).select().single();
+      if (error) throw error;
+      cats.push(rowToCat(data)); emit(); return data.id;
+    },
+    async deleteCategory(id) {
+      const { data, error } = await sb.from('categories').update({ deleted_at: new Date().toISOString() }).eq('id', id).select().single();
+      if (error) throw error;
+      cats = cats.map(c => c.id === id ? rowToCat(data) : c); emit();
+    },
+    async addTx(t) {
+      const { data, error } = await sb.from('transactions').insert(txToRow(t)).select().single();
+      if (error) throw error;
+      txs.push(rowToTx(data)); emit();
+    },
+    async deleteTx(id) {
+      const { error } = await sb.from('transactions').delete().eq('id', id);
+      if (error) throw error;
+      txs = txs.filter(t => t.id !== id); emit();
+    },
+    async eraseAll() {
+      let r = await sb.from('transactions').delete().eq('user_id', uid);
+      if (r.error) throw r.error;
+      r = await sb.from('categories').delete().eq('user_id', uid);
+      if (r.error) throw r.error;
+      cats = []; txs = []; emit();
+    }
+  };
+}
+
+/* ---------- App state ---------- */
+let store = null;
+let data = { categories: [], transactions: [] };
+let calc = compute([], []);
+let loaded = false;
+let tab = 'budget';
+let historyLimit = 25;
+let sheet = null; // { kind, catId, mode, pending }
+
+const $ = id => document.getElementById(id);
+const activeCats = () => data.categories.filter(c => !c.deletedAt).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+const catById = id => data.categories.find(c => c.id === id);
+function catLabel(id) {
+  if (!id) return 'Ready to Assign';
+  const c = catById(id);
+  if (!c) return 'Unknown category';
+  return c.name + (c.deletedAt ? ' (deleted)' : '');
+}
+function canDeleteTx(t) {
+  for (const id of [t.cat, t.to]) { if (!id) continue; const c = catById(id); if (!c || c.deletedAt) return false; }
+  return true;
+}
+
+/* ---------- Rendering ---------- */
+function render() {
+  calc = compute(data.categories, data.transactions);
+  $('total-amt').textContent = fmt(calc.total);
+  $('total-amt').classList.toggle('neg', calc.total < 0);
+
+  const rta = $('rta');
+  rta.className = 'rta win ' + (calc.rta < 0 ? 'bad' : calc.rta === 0 ? 'zero' : 'ok');
+  $('rta-amt').textContent = fmt(calc.rta);
+  const cats = activeCats();
+  let hint;
+  if (calc.rta < 0) hint = 'More is assigned than you have. Move money back here or add income.';
+  else if (calc.rta > 0) hint = cats.length ? 'Assign these dollars to a category.' : 'Create a category to assign these dollars.';
+  else hint = (data.transactions.length ? 'Every dollar is assigned.' : 'Add income to get started.');
+  $('rta-hint').textContent = hint;
+
+  const isBlank = loaded && !data.categories.length && !data.transactions.length;
+  $('empty').hidden = !isBlank;
+  $('no-cats').hidden = !(loaded && !isBlank && !cats.length);
+  const list = $('cats');
+  list.hidden = !cats.length;
+  list.innerHTML = cats.map(c => {
+    const b = calc.bal[c.id] || 0;
+    const cls = b < 0 ? 'neg' : (b === 0 ? 'zero' : '');
+    return `<li class="cat"><button data-action="open-cat" data-id="${esc(c.id)}">
+      <span class="cur" aria-hidden="true"></span>
+      <span class="cat-name">${esc(c.name)}</span>
+      <span class="lead" aria-hidden="true"></span>
+      <span class="cat-bal num ${cls}">${fmt(b)}</span></button></li>`;
+  }).join('');
+
+  renderHistory();
+  if (sheet) refreshSheet();
+}
+
+function txView(t, ctxCat) {
+  const a = t.amount | 0;
+  let title, amt, cls, extra = '';
+  if (t.type === 'income') { title = 'Income'; amt = '+' + fmt(a); cls = 'pos'; }
+  else if (t.type === 'spend') {
+    title = ctxCat ? 'Spent' : 'Spent · ' + catLabel(t.cat);
+    amt = '−' + fmt(a).replace('−', ''); cls = 'neg';
+    if (t.covered) extra = 'Covered ' + fmt(t.covered) + ' from Ready to Assign';
+  } else if (t.type === 'assign') {
+    title = ctxCat ? 'Assigned' : 'Assigned to ' + catLabel(t.cat);
+    amt = ctxCat ? '+' + fmt(a) : fmt(a); cls = ctxCat ? 'pos' : 'neutral';
+  } else if (t.type === 'move') {
+    if (ctxCat && t.cat === ctxCat) { title = 'Moved to ' + catLabel(t.to); amt = '−' + fmt(a); cls = 'neg'; }
+    else if (ctxCat) { title = 'Moved from ' + catLabel(t.cat); amt = '+' + fmt(a); cls = 'pos'; }
+    else { title = catLabel(t.cat) + ' → ' + catLabel(t.to); amt = fmt(a); cls = 'neutral'; }
+  }
+  const meta = [fmtDate(t.date), t.note].filter(Boolean).map(esc).join(' · ');
+  const side = canDeleteTx(t)
+    ? `<button class="tx-del" data-action="del-tx" data-id="${esc(t.id)}">Delete</button>`
+    : `<span class="tx-locked">Category deleted</span>`;
+  return `<li class="tx">
+    <span class="tx-title">${esc(title)}</span>
+    <span class="tx-amt num ${cls}">${esc(amt)}</span>
+    <span class="tx-meta">${meta || '&nbsp;'}</span>
+    <span class="tx-side">${side}</span>
+    ${extra ? `<span class="tx-extra">${esc(extra)}</span>` : ''}
+  </li>`;
+}
+
+function renderHistory() {
+  const all = sortTx(data.transactions);
+  const shown = all.slice(0, historyLimit);
+  $('history-list').innerHTML = shown.map(t => txView(t, null)).join('');
+  $('history-list').parentElement.hidden = !all.length;
+  $('history-empty').hidden = !!all.length || !loaded;
+  $('history-count').textContent = all.length ? `Showing ${shown.length} of ${all.length}` : '';
+  $('btn-more').hidden = all.length <= historyLimit;
+}
+
+function setTab(t) {
+  tab = t;
+  $('view-budget').hidden = t !== 'budget';
+  $('view-budget').style.display = t === 'budget' ? 'flex' : 'none';
+  $('view-history').hidden = t !== 'history';
+  $('view-history').style.display = t === 'history' ? 'flex' : 'none';
+  $('tab-budget').toggleAttribute('aria-current', t === 'budget');
+  $('tab-history').toggleAttribute('aria-current', t === 'history');
+  if (t === 'budget') $('tab-budget').setAttribute('aria-current', 'page'); else $('tab-history').setAttribute('aria-current', 'page');
+  window.scrollTo(0, 0);
+}
+
+/* ---------- Sheets ---------- */
+function moneyField() {
+  return `<label class="field"><span>Amount</span><div class="money"><span>$</span>
+    <input id="f-amount" inputmode="decimal" autocomplete="off" placeholder="0.00" aria-label="Amount in dollars"></div></label>`;
+}
+function noteDateFields(ph) {
+  return `<div class="row2">
+    <label class="field"><span>Note <em>(optional)</em></span><input id="f-note" maxlength="80" placeholder="${esc(ph)}" autocomplete="off"></label>
+    <label class="field"><span>Date</span><input id="f-date" type="date" value="${today()}"></label>
+  </div>`;
+}
+function head(eyebrow, title) {
+  return `<div class="grabber" aria-hidden="true"></div>
+  <div class="sheet-head"><div><p class="eyebrow">${esc(eyebrow)}</p><h2 id="sheet-title">${esc(title)}</h2></div>
+  <button class="icon-btn btn small" data-action="close" aria-label="Close">×</button></div>`;
+}
+
+function openSheet(s) {
+  sheet = s;
+  renderSheet();
+  const bd = $('backdrop');
+  bd.hidden = false;
+  requestAnimationFrame(() => bd.classList.add('open'));
+  setTimeout(() => { const f = $('sheet').querySelector('input:not([type=date])'); if (f) f.focus(); }, 60);
+}
+function closeSheet() {
+  sheet = null;
+  const bd = $('backdrop');
+  bd.classList.remove('open');
+  setTimeout(() => { if (!sheet) { bd.hidden = true; $('sheet').innerHTML = ''; } }, 200);
+}
+
+function renderSheet() {
+  const el = $('sheet');
+  if (sheet.kind === 'income') {
+    el.innerHTML = head('Total balance', 'Add income') + `<form class="form" id="f" novalidate>
+      ${moneyField()}${noteDateFields('Paycheck')}
+      <p class="hint">Income raises your Total balance and lands in Ready to Assign.</p>
+      <p class="err" id="f-err" role="alert"></p>
+      <div class="actions"><button class="btn primary" type="submit" id="f-submit">Add income</button></div></form>`;
+  } else if (sheet.kind === 'new-cat') {
+    el.innerHTML = head('Categories', 'New category') + `<form class="form" id="f" novalidate>
+      <label class="field"><span>Name</span><input id="f-name" maxlength="40" placeholder="Groceries" autocomplete="off"></label>
+      <p class="err" id="f-err" role="alert"></p>
+      <div class="actions"><button class="btn primary" type="submit" id="f-submit">Create category</button></div></form>`;
+  } else if (sheet.kind === 'cat') {
+    const c = catById(sheet.catId);
+    const m = sheet.mode;
+    el.innerHTML = head('Category', c ? c.name : '') + `
+      <p class="sheet-bal num" data-live="bal"></p>
+      <div class="seg" role="group" aria-label="Action">
+        <button type="button" data-action="mode" data-mode="spend" aria-pressed="${m === 'spend'}">Spend</button>
+        <button type="button" data-action="mode" data-mode="assign" aria-pressed="${m === 'assign'}">Assign</button>
+        <button type="button" data-action="mode" data-mode="move" aria-pressed="${m === 'move'}">Move</button>
+      </div>
+      <form class="form" id="f" novalidate>
+        ${moneyField()}
+        <label class="field" id="to-field" ${m === 'move' ? '' : 'hidden'}><span>Move to</span><select id="f-to"></select></label>
+        <div class="fix" id="f-fix" hidden><p data-live="fix-text"></p><button type="button" class="btn small primary" data-action="fix-rta" data-live="fix-btn"></button></div>
+        ${noteDateFields(m === 'spend' ? 'Meijer' : '')}
+        <p class="hint" data-live="hint"></p>
+        <p class="err" id="f-err" role="alert"></p>
+        <div class="actions" id="f-actions"><button class="btn primary" type="submit" id="f-submit"></button></div>
+        <div class="cover win bad" id="f-cover" hidden></div>
+      </form>
+      <h3>Recent</h3>
+      <ul class="tx-list" data-live="recent"></ul>
+      <div><button type="button" class="btn small danger" data-action="del-cat" id="btn-del-cat">Delete category</button></div>`;
+    applyMode();
+    refreshSheet();
+  }
+}
+
+function applyMode() {
+  const m = sheet.mode;
+  $('sheet').querySelectorAll('[data-action="mode"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === m)));
+  $('to-field').hidden = m !== 'move';
+  $('f-fix').hidden = true;
+  setSubmitLabel();
+  $('f-note').placeholder = m === 'spend' ? 'Meijer' : m === 'assign' ? 'Monthly fill' : 'Covering a shortfall';
+  hideCover();
+  $('f-err').textContent = '';
+}
+
+function setSubmitLabel() {
+  const m = sheet.mode;
+  $('f-submit').textContent = m === 'spend' ? 'Record spending' : m === 'assign' ? 'Assign dollars'
+    : ($('f-to').value ? 'Move dollars' : 'Return to Ready to Assign');
+}
+
+function refreshSheet() {
+  if (!sheet || sheet.kind !== 'cat') return;
+  const c = catById(sheet.catId);
+  if (!c || c.deletedAt) { closeSheet(); return; }
+  const el = $('sheet');
+  const b = calc.bal[c.id] || 0;
+  const balEl = el.querySelector('[data-live="bal"]');
+  balEl.textContent = fmt(b);
+  balEl.classList.toggle('neg', b < 0);
+  const m = sheet.mode;
+  let hint;
+  if (m === 'spend') hint = b < 0 ? `Overspent by ${fmt(-b)}.` : `Available to spend: ${fmt(b)}`;
+  else if (m === 'assign') hint = `Ready to Assign: ${fmt(calc.rta)}`;
+  else hint = `Available to move: ${fmt(Math.max(b, 0))}`;
+  el.querySelector('[data-live="hint"]').textContent = hint;
+
+  const sel = $('f-to');
+  const prev = sel.value;
+  const others = activeCats().filter(x => x.id !== c.id);
+  sel.innerHTML = '<option value="">Return to Ready to Assign</option>' + (others.length
+    ? '<optgroup label="Another category">' + others.map(o => `<option value="${esc(o.id)}">${esc(o.name)}</option>`).join('') + '</optgroup>'
+    : '');
+  if (prev === '' || others.some(o => o.id === prev)) sel.value = prev;
+  setSubmitLabel();
+
+  // Negative Ready to Assign: offer a one-tap fill to pay it back from this category
+  const fix = $('f-fix'), canFix = m === 'move' && calc.rta < 0 && b > 0;
+  fix.hidden = !canFix;
+  if (canFix) {
+    const amt = Math.min(-calc.rta, b);
+    fix.querySelector('[data-live="fix-text"]').textContent = `Ready to Assign is ${fmt(calc.rta)}.`;
+    const fb = fix.querySelector('[data-live="fix-btn"]');
+    fb.textContent = `Fill ${fmt(amt)}`; fb.dataset.amt = String(amt);
+  }
+
+  const recent = sortTx(data.transactions.filter(t => t.cat === c.id || t.to === c.id)).slice(0, 4);
+  el.querySelector('[data-live="recent"]').innerHTML = recent.length
+    ? recent.map(t => txView(t, c.id)).join('')
+    : '<li class="muted-note" style="padding:8px 0">No transactions yet.</li>';
+
+  const del = $('btn-del-cat');
+  if (!del.dataset.armed) del.textContent = 'Delete category';
+}
+
+function showCover(pending) {
+  sheet.pending = pending;
+  const c = catById(sheet.catId);
+  const after = (calc.bal[c.id] || 0) - pending.amount;
+  const rtaAfter = calc.rta - pending.short;
+  $('f-actions').hidden = true;
+  const box = $('f-cover');
+  box.hidden = false;
+  box.innerHTML = `<p><strong>This puts ${esc(c.name)} at ${fmt(after)}.</strong> Cover ${fmt(pending.short)} from Ready to Assign?</p>
+    ${rtaAfter < 0 ? `<p class="warn">Ready to Assign will go to ${fmt(rtaAfter)}.</p>` : ''}
+    <div class="actions">
+      <button type="button" class="btn primary" data-action="cover-yes">Cover ${fmt(pending.short)}</button>
+      <button type="button" class="btn" data-action="cover-no">Leave negative</button>
+    </div>
+    <div><button type="button" class="link" data-action="cover-back">Change amount</button></div>`;
+}
+function hideCover() {
+  if (!sheet) return;
+  sheet.pending = null;
+  const box = $('f-cover'); if (box) { box.hidden = true; box.innerHTML = ''; }
+  const act = $('f-actions'); if (act) act.hidden = false;
+}
+
+/* ---------- Actions ---------- */
+let toastTimer;
+function toast(msg, bad) {
+  const t = $('toast');
+  t.textContent = msg; t.classList.toggle('bad', !!bad); t.classList.toggle('hud', !bad); t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+}
+function writeError(e) {
+  if (e && e.code === '23505') return 'You already have a category with that name.';
+  if (e && (e.code === 'PGRST301' || e.status === 401 || /jwt/i.test(e.message || ''))) return 'Your session expired. Sign in again.';
+  return "Couldn't save that. Check your connection and try again.";
+}
+async function run(btn, fn) {
+  if (btn) btn.disabled = true;
+  try { await fn(); return true; }
+  catch (e) { toast(writeError(e), true); return false; }
+  finally { if (btn) btn.disabled = false; }
+}
+
+function readTxFields() {
+  return { note: ($('f-note').value || '').trim(), date: $('f-date').value || today() };
+}
+
+async function submitForm() {
+  const err = $('f-err'); err.textContent = '';
+  const btn = $('f-submit');
+  if (sheet.kind === 'new-cat') {
+    const name = ($('f-name').value || '').trim().replace(/\s+/g, ' ');
+    if (!name) { err.textContent = 'Give the category a name.'; return; }
+    if (activeCats().some(c => c.name.toLowerCase() === name.toLowerCase())) { err.textContent = `You already have a category called ${name}.`; return; }
+    let id;
+    const ok = await run(btn, async () => { id = await store.addCategory(name); });
+    if (ok) { toast(`Created ${name}`); openSheet({ kind: 'cat', catId: id, mode: 'assign' }); }
+    return;
+  }
+  const amount = parseCents($('f-amount').value);
+  if (!amount) { err.textContent = 'Enter an amount like 11.11 (up to 2 decimal places).'; return; }
+  const { note, date } = readTxFields();
+
+  if (sheet.kind === 'income') {
+    const ok = await run(btn, () => store.addTx({ type: 'income', amount, cat: null, to: null, covered: 0, note, date, createdAt: stamp() }));
+    if (ok) { toast(`Added ${fmt(amount)} income`); closeSheet(); }
+    return;
+  }
+
+  const c = catById(sheet.catId);
+  const b = calc.bal[c.id] || 0;
+  if (sheet.mode === 'spend') {
+    const short = shortfallFor(b, amount);
+    if (short > 0) { showCover({ amount, note, date, short }); return; }
+    await commitSpend(amount, note, date, 0);
+  } else if (sheet.mode === 'assign') {
+    if (amount > calc.rta) {
+      err.textContent = calc.rta > 0 ? `Only ${fmt(calc.rta)} is ready to assign.` : 'Nothing is ready to assign. Add income or move money back first.';
+      return;
+    }
+    const ok = await run(btn, () => store.addTx({ type: 'assign', amount, cat: c.id, to: null, covered: 0, note, date, createdAt: stamp() }));
+    if (ok) { toast(`Assigned ${fmt(amount)} to ${c.name}`); clearAmount(); }
+  } else {
+    if (amount > b) { err.textContent = b > 0 ? `Only ${fmt(b)} is in ${c.name}.` : `${c.name} has nothing to move.`; return; }
+    const to = $('f-to').value || null;
+    const ok = await run(btn, () => store.addTx({ type: 'move', amount, cat: c.id, to, covered: 0, note, date, createdAt: stamp() }));
+    if (ok) { toast(to ? `Moved ${fmt(amount)} to ${catLabel(to)}` : `Returned ${fmt(amount)} to Ready to Assign`); clearAmount(); }
+  }
+}
+
+async function commitSpend(amount, note, date, covered) {
+  const c = catById(sheet.catId);
+  const ok = await run($('f-submit'), () => store.addTx({ type: 'spend', amount, cat: c.id, to: null, covered, note, date, createdAt: stamp() }));
+  if (ok) { hideCover(); toast(`Spent ${fmt(amount)} from ${c.name}`); clearAmount(); }
+}
+function clearAmount() { $('f-amount').value = ''; $('f-note').value = ''; }
+
+function arm(btn, label, armedLabel, onConfirm) {
+  if (btn.dataset.armed) { delete btn.dataset.armed; btn.textContent = label; onConfirm(); return; }
+  btn.dataset.armed = '1'; btn.textContent = armedLabel;
+  setTimeout(() => { if (btn.isConnected && btn.dataset.armed) { delete btn.dataset.armed; btn.textContent = label; } }, 4000);
+}
+
+async function loadExample() {
+  const btn = $('btn-example');
+  await run(btn, async () => {
+    const ids = {};
+    for (const n of ['Groceries', 'Gas', 'Dining Out', 'Savings']) ids[n] = await store.addCategory(n);
+    const d = today();
+    const rows = [
+      ['income', 250000, null, 'Paycheck (example)'],
+      ['assign', 60000, 'Groceries', ''], ['assign', 20000, 'Gas', ''],
+      ['assign', 15000, 'Dining Out', ''], ['assign', 50000, 'Savings', ''],
+      ['spend', 8743, 'Groceries', 'Meijer (example)'], ['spend', 4211, 'Gas', 'Shell (example)'],
+      ['spend', 2650, 'Dining Out', 'Tacos (example)']
+    ];
+    for (const [type, amount, cat, note] of rows) {
+      await store.addTx({ type, amount, cat: cat ? ids[cat] : null, to: null, covered: 0, note, date: d, createdAt: stamp() });
+    }
+  });
+}
+
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-action]');
+  if (!el) { if (e.target === $('backdrop')) closeSheet(); return; }
+  const a = el.dataset.action;
+  if (a === 'tab') setTab(el.dataset.tab);
+  else if (a === 'income') openSheet({ kind: 'income' });
+  else if (a === 'new-cat') openSheet({ kind: 'new-cat' });
+  else if (a === 'open-cat') openSheet({ kind: 'cat', catId: el.dataset.id, mode: 'spend' });
+  else if (a === 'close') closeSheet();
+  else if (a === 'mode') { sheet.mode = el.dataset.mode; applyMode(); refreshSheet(); }
+  else if (a === 'cover-yes') { const p = sheet.pending; if (p) commitSpend(p.amount, p.note, p.date, p.short); }
+  else if (a === 'cover-no') { const p = sheet.pending; if (p) commitSpend(p.amount, p.note, p.date, 0); }
+  else if (a === 'cover-back') { hideCover(); $('f-amount').focus(); }
+  else if (a === 'fix-rta') {
+    $('f-amount').value = (Number(el.dataset.amt) / 100).toFixed(2);
+    $('f-to').value = ''; setSubmitLabel(); $('f-err').textContent = '';
+    $('f-submit').focus();
+  }
+  else if (a === 'more') { historyLimit += 25; renderHistory(); }
+  else if (a === 'example') loadExample();
+  else if (a === 'del-tx') {
+    arm(el, 'Delete', 'Tap to confirm', () => {
+      const t = data.transactions.find(x => x.id === el.dataset.id);
+      run(null, () => store.deleteTx(el.dataset.id)).then(ok => { if (ok && t) toast('Transaction deleted'); });
+    });
+  } else if (a === 'del-cat') {
+    const c = catById(sheet.catId); const b = calc.bal[c.id] || 0;
+    const msg = b === 0 ? `Tap again to delete ${c.name}` : b > 0 ? `Tap again: ${fmt(b)} returns to Ready to Assign` : `Tap again: ${fmt(b)} shortfall moves to Ready to Assign`;
+    arm(el, 'Delete category', msg, () => {
+      const name = c.name;
+      run(el, () => store.deleteCategory(c.id)).then(ok => { if (ok) { toast(`Deleted ${name}`); closeSheet(); } });
+    });
+  } else if (a === 'erase') {
+    arm(el, 'Erase all budget data', 'Tap again to erase everything', () => {
+      run(el, () => store.eraseAll()).then(ok => { if (ok) { historyLimit = 25; toast('All budget data erased'); } });
+    });
+  }
+});
+document.addEventListener('change', e => { if (e.target.id === 'f-to' && sheet) setSubmitLabel(); });
+document.addEventListener('submit', e => { if (e.target.id === 'f') { e.preventDefault(); submitForm(); } });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && sheet) closeSheet(); });
+
+/* ---------- Auth: email + password with email confirmation (Supabase) ---------- */
+const CFG = window.BUDGET_CONFIG || {};
+const SITE = location.origin + location.pathname;
+let sb = null, currentUser = null, authMode = 'signin', pendingEmail = '', recovering = false;
+
+function hideAppViews() {
+  for (const id of ['view-budget', 'view-history']) { $(id).hidden = true; $(id).style.display = 'none'; }
+  $('tabbar').hidden = true;
+}
+
+function showSignedOut(mode, msg, kind) {
+  if (store && store.stop) store.stop();
+  store = null; currentUser = null; data = { categories: [], transactions: [] }; loaded = false;
+  if (sheet) closeSheet();
+  render(); // clear the previous person's numbers from the page
+  hideAppViews();
+  $('banner').hidden = true;
+  $('view-auth').hidden = false;
+  const chip = $('mode-chip'); chip.textContent = 'Signed out'; chip.className = 'chip';
+  renderAuth(mode || 'signin', msg, kind);
+}
+
+function authFields(mode) {
+  const email = `<label class="field"><span>Email</span><input id="a-email" type="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" value="${esc(pendingEmail)}"></label>`;
+  const pw = (id, label, ac) => `<label class="field"><span>${label}</span><input id="${id}" type="password" autocomplete="${ac}" minlength="8"></label>`;
+  const show = `<label class="check"><input type="checkbox" id="a-show"> Show password</label>`;
+  if (mode === 'signin') return email + pw('a-pass', 'Password', 'current-password') + show;
+  if (mode === 'signup') return email + pw('a-pass', 'Password <em>(8+ characters)</em>', 'new-password') + pw('a-pass2', 'Confirm password', 'new-password') + show;
+  if (mode === 'forgot') return email;
+  if (mode === 'reset') return pw('a-pass', 'New password <em>(8+ characters)</em>', 'new-password') + pw('a-pass2', 'Confirm new password', 'new-password') + show;
+  return '';
+}
+
+function renderAuth(mode, msg, kind) {
+  authMode = mode;
+  const w = $('auth-win');
+  const tabs = (mode === 'signin' || mode === 'signup') ? `<div class="seg two" role="group" aria-label="Account">
+      <button type="button" data-action="auth-mode" data-mode="signin" aria-pressed="${mode === 'signin'}">Sign in</button>
+      <button type="button" data-action="auth-mode" data-mode="signup" aria-pressed="${mode === 'signup'}">Create account</button></div>` : '';
+  const msgP = `<p class="auth-msg ${kind || 'err'}" id="auth-msg" role="alert">${esc(msg || '')}</p>`;
+  if (mode === 'setup') {
+    w.innerHTML = `<h2>Setup needed</h2><p>Add your Supabase project URL and anon key to <strong>config.js</strong>, then reload this page.</p>`;
+    return;
+  }
+  if (mode === 'check') {
+    w.innerHTML = `<h2>Check your email</h2>
+      <p>We sent a confirmation link to <strong>${esc(pendingEmail)}</strong>. Open it to finish creating your account, then sign in.</p>
+      ${msgP}
+      <div class="actions"><button type="button" class="btn primary" data-action="resend" id="auth-resend">Resend email</button>
+      <button type="button" class="btn" data-action="auth-mode" data-mode="signin">Back to sign in</button></div>`;
+    return;
+  }
+  const titles = { signin: 'Welcome back', signup: 'Create your account', forgot: 'Reset password', reset: 'Choose a new password' };
+  const submit = { signin: 'Sign in', signup: 'Create account', forgot: 'Send reset link', reset: 'Save new password' };
+  const hint = mode === 'signup' ? `<p class="hint">We'll email you a link to confirm your account before you can sign in.</p>`
+    : mode === 'forgot' ? `<p class="hint">We'll email you a link to set a new password.</p>` : '';
+  const links = mode === 'signin' ? `<div class="auth-links"><button type="button" class="link" data-action="auth-mode" data-mode="forgot">Forgot password?</button></div>`
+    : mode === 'forgot' ? `<div class="auth-links"><button type="button" class="link" data-action="auth-mode" data-mode="signin">Back to sign in</button></div>` : '';
+  w.innerHTML = `${tabs}<h2>${titles[mode]}</h2>
+    <form class="form" id="auth-form" novalidate>${authFields(mode)}${hint}${msgP}
+      <div class="actions"><button class="btn primary" type="submit" id="auth-submit">${submit[mode]}</button></div></form>${links}`;
+  const first = w.querySelector('input:not([type=checkbox])');
+  if (first && !first.value) setTimeout(() => first.focus(), 50);
+}
+
+function authError(e) {
+  const c = (e && e.code) || '', m = (e && e.message) || '';
+  if (c === 'invalid_credentials' || /invalid login/i.test(m)) return 'Email or password is incorrect.';
+  if (c === 'over_email_send_rate_limit' || (e && e.status === 429)) return 'Too many emails sent. Wait a few minutes and try again.';
+  if (c === 'user_already_exists' || /already registered/i.test(m)) return 'An account with that email already exists. Sign in instead.';
+  if (c === 'same_password') return 'Choose a password different from your current one.';
+  if (c === 'weak_password') return m || 'That password is too weak. Try a longer one.';
+  return m || 'Something went wrong. Try again.';
+}
+
+async function submitAuth() {
+  const mode = authMode, btn = $('auth-submit');
+  const email = (($('a-email') || {}).value || '').trim().toLowerCase();
+  const pw = ($('a-pass') || {}).value || '', pw2 = ($('a-pass2') || {}).value || '';
+  const say = (m, k) => { const el = $('auth-msg'); if (el) { el.textContent = m; el.className = 'auth-msg ' + (k || 'err'); } };
+  if (mode !== 'reset' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return say('Enter a valid email address.');
+  if (mode === 'signin' && !pw) return say('Enter your password.');
+  if ((mode === 'signup' || mode === 'reset') && pw.length < 8) return say('Use at least 8 characters for your password.');
+  if ((mode === 'signup' || mode === 'reset') && pw !== pw2) return say("Passwords don't match.");
+  btn.disabled = true;
+  try {
+    if (mode === 'signin') {
+      const { error } = await sb.auth.signInWithPassword({ email, password: pw });
+      if (error) {
+        if (error.code === 'email_not_confirmed' || /not confirmed/i.test(error.message || '')) {
+          pendingEmail = email; renderAuth('check', 'Confirm your email before signing in. Need a new link?', 'err');
+        } else say(authError(error));
+      }
+      // Success is handled by onAuthStateChange
+    } else if (mode === 'signup') {
+      const { data: res, error } = await sb.auth.signUp({ email, password: pw, options: { emailRedirectTo: SITE } });
+      if (error) say(authError(error));
+      else if (!res.session) { pendingEmail = email; renderAuth('check'); }
+    } else if (mode === 'forgot') {
+      pendingEmail = email;
+      const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: SITE });
+      if (error) say(authError(error)); else say('If that email has an account, a reset link is on its way.', 'ok');
+    } else if (mode === 'reset') {
+      const { error } = await sb.auth.updateUser({ password: pw });
+      if (error) say(authError(error));
+      else {
+        recovering = false; toast('Password updated');
+        const { data: s } = await sb.auth.getSession();
+        if (s && s.session) enterApp(s.session.user); else showSignedOut('signin', 'Password updated. Sign in with your new password.', 'ok');
+      }
+    }
+  } catch (e) {
+    say("Couldn't reach the server. Check your connection and try again.");
+  } finally {
+    if (btn && btn.isConnected) btn.disabled = false;
+  }
+}
+
+async function resendConfirmation() {
+  const btn = $('auth-resend'), el = $('auth-msg');
+  btn.disabled = true;
+  try {
+    const { error } = await sb.auth.resend({ type: 'signup', email: pendingEmail, options: { emailRedirectTo: SITE } });
+    el.textContent = error ? authError(error) : 'Sent a new confirmation link.';
+    el.className = 'auth-msg ' + (error ? 'err' : 'ok');
+  } catch (e) {
+    el.textContent = "Couldn't reach the server. Check your connection and try again."; el.className = 'auth-msg err';
+  } finally { btn.disabled = false; }
+}
+
+function enterApp(user) {
+  if (currentUser && currentUser.id === user.id && store) return;
+  if (store && store.stop) store.stop();
+  currentUser = user; data = { categories: [], transactions: [] }; loaded = false; historyLimit = 25;
+  $('view-auth').hidden = true; $('tabbar').hidden = false;
+  $('acct-email').textContent = user.email || '';
+  const chip = $('mode-chip'); chip.textContent = 'Synced'; chip.className = 'chip sync';
+  setTab('budget'); render();
+
+  store = makeSupabaseStore(sb, user.id);
+  const banner = $('banner');
+  const loadTimer = setTimeout(() => {
+    banner.textContent = "Can't reach your saved budget yet. Numbers may be out of date.";
+    banner.hidden = false;
+  }, 10000);
+  store.start(
+    d => { data = d; loaded = true; render(); },
+    err => {
+      clearTimeout(loadTimer); loaded = true; render();
+      banner.textContent = "Your saved budget can't be reached right now. Pull to refresh or try again shortly.";
+      banner.hidden = false;
+    },
+    () => { clearTimeout(loadTimer); banner.hidden = true; }
+  );
+}
+
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-action]');
+  if (!el) return;
+  const a = el.dataset.action;
+  if (a === 'auth-mode') { const keep = (($('a-email') || {}).value || '').trim(); if (keep) pendingEmail = keep; renderAuth(el.dataset.mode); }
+  else if (a === 'resend') resendConfirmation();
+  else if (a === 'signout') { el.disabled = true; sb.auth.signOut().finally(() => { el.disabled = false; }); }
+});
+document.addEventListener('change', e => {
+  if (e.target.id === 'a-show') document.querySelectorAll('#auth-form input[type=password], #auth-form input[data-pw]').forEach(i => {
+    i.dataset.pw = '1'; i.type = e.target.checked ? 'text' : 'password';
+  });
+});
+document.addEventListener('submit', e => { if (e.target.id === 'auth-form') { e.preventDefault(); submitAuth(); } });
+
+/* ---------- Boot ---------- */
+ART.skin();
+try { ART.scene($('bg')); } catch (e) {}
+let bgW = innerWidth, bgTimer;
+addEventListener('resize', () => {
+  clearTimeout(bgTimer);
+  bgTimer = setTimeout(() => { if (Math.abs(innerWidth - bgW) > 40) { bgW = innerWidth; try { ART.scene($('bg')); } catch (e) {} } }, 200);
+});
+hideAppViews();
+render();
+(function boot() {
+  const configured = window.supabase && CFG.supabaseUrl && CFG.supabaseAnonKey && !/YOUR-/.test(CFG.supabaseUrl + CFG.supabaseAnonKey);
+  if (!configured) { showSignedOut('setup'); return; }
+  sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseAnonKey);
+  sb.auth.onAuthStateChange((event, session) => {
+    // Defer: Supabase advises against calling its other methods inside this callback
+    setTimeout(() => {
+      if (event === 'PASSWORD_RECOVERY') { recovering = true; showSignedOut('reset'); return; }
+      if (recovering) return;
+      if (session && session.user) enterApp(session.user);
+      else if (event === 'SIGNED_OUT' || event === 'INITIAL_SESSION') showSignedOut(authMode === 'check' ? 'check' : 'signin');
+    }, 0);
+  });
+})();
+</script>
+
+</body>
+</html>
