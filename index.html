@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#001208">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Envelopes">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="manifest" href="manifest.webmanifest">
 <title>Envelope Budget</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -17,6 +22,8 @@
   --white: #ffffff; --ice: #b9f5c9; --sky: #00ff7f;
   --yellow: #7fff00; --gold: #3f9900;
   --green: #6dff6d; --red: #ff9292; --gray: #a9c9a9;
+  --goal-tint: rgba(0, 40, 20, .35); /* goal rows: a slightly deeper forest green */
+  --amber: #ffc31f; /* savings goal still in progress (red stays reserved for problems) */
   --font-px: "Press Start 2P", "Courier New", monospace;
   --font-ui: "Pixelify Sans", "Trebuchet MS", system-ui, sans-serif;
   --tabbar-h: 78px;
@@ -108,8 +115,9 @@ button { cursor: pointer; }
 .cat + .cat { border-top: 3px solid rgba(0, 0, 0, .35); }
 .cat button {
   width: 100%; border: 0; background: none; text-align: left; padding: 12px 6px; min-height: 56px; text-shadow: inherit;
-  display: flex; align-items: center; gap: 8px;
+  display: flex; flex-direction: column; justify-content: center; gap: 8px;
 }
+.cat-line { display: flex; align-items: center; gap: 8px; width: 100%; }
 .cur { flex: none; width: 9px; height: 15px; background: var(--yellow); visibility: hidden;
   clip-path: polygon(0 0, 3px 0, 3px 3px, 6px 3px, 6px 6px, 9px 6px, 9px 9px, 6px 9px, 6px 12px, 3px 12px, 3px 15px, 0 15px); }
 .cat button:hover .cur, .cat button:focus-visible .cur, .cat button:active .cur { visibility: visible; animation: blink .8s steps(1) infinite; }
@@ -121,6 +129,37 @@ button { cursor: pointer; }
 .cat-bal { flex: none; font-family: var(--font-px); font-size: 13px; }
 .cat-bal.neg { color: var(--red); }
 .cat-bal.zero { color: var(--gray); }
+.cat-bal.goal, .sheet-bal.goal { color: var(--amber); }
+.cat-bal.met, .sheet-bal.met { color: var(--yellow); }
+
+/* Savings goals: a segmented pixel progress bar, gold while saving, chartreuse when met */
+.goal-row { display: flex; align-items: center; gap: 10px; width: 100%; padding-left: 17px; }
+.bar { flex: 1 1 auto; min-width: 60px; height: 16px; padding: 3px; background: #000; clip-path: var(--notch); box-shadow: inset 0 0 0 2px #2e6b45; }
+.bar > i { display: block; height: 100%; max-width: 100%; background: repeating-linear-gradient(90deg, var(--amber) 0 6px, transparent 6px 8px); }
+.bar.done > i { background: repeating-linear-gradient(90deg, var(--yellow) 0 6px, transparent 6px 8px); }
+.goal-txt { flex: none; font-family: var(--font-px); font-size: 9px; line-height: 1.4; color: var(--amber); text-transform: uppercase; }
+.goal-txt.done { color: var(--yellow); }
+.cat.goal-cat { background: var(--goal-tint); }
+.cat .goal-txt { min-width: 13em; text-align: right; } /* keeps every bar in the list the same length */
+.goal-txt.neg { color: var(--red); }
+.goal-box { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px; background: #000; clip-path: var(--notch); box-shadow: inset 0 0 0 3px var(--amber); }
+.goal-box.done { box-shadow: inset 0 0 0 3px var(--yellow); }
+.goal-box .goal-row { padding-left: 0; }
+.goal-box p { margin: 0; font-size: 15px; font-weight: 700; }
+.goal-box .btn { align-self: flex-start; }
+
+/* Reorder mode: drag a row by its grip (or focus the grip and use the arrow keys) */
+.list-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: -4px; }
+.list-foot .muted-note { flex: 1 1 160px; }
+.cats.reordering .cat { display: flex; align-items: stretch; }
+.cats.reordering .cat > .cat-body { flex: 1 1 auto; min-width: 0; padding: 12px 6px 12px 0; min-height: 56px; display: flex; flex-direction: column; justify-content: center; gap: 8px; }
+.cats.reordering .goal-row { padding-left: 0; }
+.cats.reordering { -webkit-user-select: none; user-select: none; }
+.cat .grip { flex: none; width: 44px; min-height: 0; border: 0; padding: 0; background: none; touch-action: none; cursor: grab; display: grid; place-items: center; text-shadow: none; }
+.cat .grip::before { content: ""; width: 12px; height: 18px; background: radial-gradient(circle, var(--yellow) 0 2px, transparent 2.5px) 0 0 / 6px 6px; filter: drop-shadow(2px 2px 0 #000); }
+.cat.dragging { position: relative; z-index: 5; background: #0f724a; box-shadow: 0 0 0 3px var(--yellow), 6px 6px 0 rgba(0, 0, 0, .6); }
+.cat.dragging .grip { cursor: grabbing; }
+.cat.dragging + .cat, .cat + .cat.dragging { border-top-color: transparent; }
 
 .empty { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 12px; }
 .empty h2 { margin: 0; font-family: var(--font-px); font-weight: 400; font-size: 13px; line-height: 1.6; color: #98fb98; text-transform: uppercase; }
@@ -139,8 +178,8 @@ button { cursor: pointer; }
 .tx-amt.pos { color: var(--green); }
 .tx-amt.neg { color: var(--red); }
 .tx-amt.neutral { color: var(--ice); }
-.tx-side { grid-column: 2; grid-row: 2 / span 2; display: flex; justify-content: flex-end; }
-.tx-del { border: 0; background: none; color: var(--ice); font-size: 14px; font-weight: 700; padding: 4px 0 4px 8px; text-decoration: underline; text-shadow: inherit; }
+.tx-side { grid-column: 2; grid-row: 2 / span 2; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 2px 14px; max-width: 46vw; }
+.tx-del { text-align: right; border: 0; background: none; color: var(--ice); font-size: 14px; font-weight: 700; padding: 4px 0 4px 8px; text-decoration: underline; text-shadow: inherit; }
 .tx-del[data-armed] { color: var(--red); }
 .tx-locked { font-size: 13px; color: var(--gray); }
 
@@ -209,6 +248,7 @@ button { cursor: pointer; }
 .actions .btn { flex: 1 1 140px; }
 .fix { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 10px 12px; background: #000; clip-path: var(--notch); box-shadow: inset 0 0 0 3px #db2424; }
 .fix p { margin: 0; font-weight: 700; color: var(--red); }
+.cat-tools { display: flex; gap: 10px; flex-wrap: wrap; }
 .cover { padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; filter: none; }
 .cover p { margin: 0; }
 .cover .warn { color: #dcffe4; font-weight: 700; font-size: 15px; }
@@ -216,7 +256,7 @@ button { cursor: pointer; }
 .toast {
   position: fixed; left: 50%; bottom: calc(var(--tabbar-h) + 16px + env(safe-area-inset-bottom, 0px)); z-index: 60;
   transform: translate(-50%, 12px); opacity: 0; transition: opacity .15s steps(3), transform .15s steps(3);
-  padding: 8px 14px; font-size: 15px; font-weight: 700; max-width: calc(100% - 32px); pointer-events: none;
+  padding: 8px 14px; font-size: 15px; font-weight: 700; max-width: calc(100% - 32px); pointer-events: none; overflow-wrap: anywhere;
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 
@@ -281,6 +321,10 @@ body { margin: 0; }
       <button class="btn small" data-action="new-cat" id="btn-new-cat">+ New category</button>
     </div>
     <ul class="cats win" id="cats" hidden></ul>
+    <div class="list-foot" id="list-foot" hidden>
+      <p class="muted-note" id="reorder-hint" hidden>Drag the grips to reorder.</p>
+      <button class="btn small" data-action="reorder" id="btn-reorder">Reorder</button>
+    </div>
     <div class="empty win" id="empty" hidden>
       <h2>Start your budget</h2>
       <ol>
@@ -303,6 +347,10 @@ body { margin: 0; }
     <div class="history-foot">
       <p class="count num" id="history-count"></p>
       <button class="btn small" data-action="more" id="btn-more" hidden>Show 25 more</button>
+    </div>
+    <div id="deleted-wrap" hidden style="display:flex;flex-direction:column;gap:12px">
+      <div class="section-head"><h2>Deleted categories</h2></div>
+      <div class="history win"><ul class="tx-list" id="deleted-list"></ul></div>
     </div>
     <div class="danger-zone">
       <div class="account">
@@ -331,46 +379,93 @@ body { margin: 0; }
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script>
 /* ENGINE START — pure money logic, no DOM */
+const MAX_CENTS = 999999999; // $9,999,999.99
+// Cents for a valid amount, null for bad input, Infinity when above the cap.
+// Commas are allowed only as thousands separators (1,000.50), never as a decimal point.
 function parseCents(input) {
-  const s = String(input == null ? '' : input).trim().replace(/[$,\s]/g, '');
-  if (!s || s === '.' || !/^\d*(\.\d{0,2})?$/.test(s)) return null;
-  const parts = s.split('.');
-  const whole = parseInt(parts[0] || '0', 10);
-  const frac = parseInt(((parts[1] || '') + '00').slice(0, 2), 10);
-  if (whole > 99999999) return null;
-  const c = whole * 100 + frac;
-  return c > 0 ? c : null;
+  const s = String(input == null ? '' : input).trim();
+  if (!/^\$?(\d{1,3}(,\d{3})+|\d*)(\.\d{0,2})?$/.test(s)) return null;
+  const clean = s.replace(/[$,]/g, '');
+  if (!clean || clean === '.') return null;
+  const parts = clean.split('.');
+  const c = Number(parts[0] || '0') * 100 + Number(((parts[1] || '') + '00').slice(0, 2));
+  if (!(c > 0)) return null;
+  return c > MAX_CENTS ? Infinity : c;
 }
 function fmt(c) {
   const neg = c < 0; c = Math.abs(Math.round(c));
   const d = Math.floor(c / 100), r = String(c % 100).padStart(2, '0');
   return (neg ? '−' : '') + '$' + d.toLocaleString('en-US') + '.' + r;
 }
+// Safe integer cents (no 32-bit truncation)
+function num(x) { const n = Math.round(Number(x)); return Number.isFinite(n) ? n : 0; }
 // Balances are always rebuilt from the transaction list, so deleting a
 // transaction undoes it exactly. Ready to Assign = Total − active category balances,
 // which means a deleted category's leftover (or shortfall) returns to Ready to Assign.
+// `available` = what can really be assigned: Total minus money sitting in categories,
+// ignoring negative (overspent) categories so they can never inflate it.
 function compute(categories, transactions) {
   const bal = {};
   for (const c of categories) bal[c.id] = 0;
   const add = (id, v) => { if (id) bal[id] = (bal[id] || 0) + v; };
   let total = 0;
   for (const t of transactions) {
-    const a = t.amount | 0;
+    const a = num(t.amount);
     if (t.type === 'income') total += a;
     else if (t.type === 'assign') add(t.cat, a);
-    else if (t.type === 'spend') { total -= a; add(t.cat, -a + (t.covered | 0)); }
+    else if (t.type === 'spend') { total -= a; add(t.cat, -a + num(t.covered)); }
     else if (t.type === 'move') { add(t.cat, -a); add(t.to, a); }
   }
-  let assigned = 0;
-  for (const c of categories) if (!c.deletedAt) assigned += bal[c.id] || 0;
-  return { total, bal, rta: total - assigned };
+  let assigned = 0, positive = 0;
+  for (const c of categories) if (!c.deletedAt) { const b = bal[c.id] || 0; assigned += b; if (b > 0) positive += b; }
+  return { total, bal, rta: total - assigned, available: total - positive };
 }
+// Part of a spend the category can't pay for; always charged to Ready to Assign
 function shortfallFor(balance, amount) {
   const after = balance - amount;
   return after < 0 ? Math.min(amount, -after) : 0;
 }
 function sortTx(list) {
   return list.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.createdAt || 0) - (a.createdAt || 0));
+}
+// Newest entered first, for the category panel's Recent list
+function sortRecent(list) {
+  return list.slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+}
+// Savings goals: progress is simply the current balance against the target,
+// so spending or moving money out lowers it again. Returns null for regular categories.
+function goalInfo(goal, balance) {
+  if (!(goal > 0)) return null;
+  const have = Math.max(num(balance), 0);
+  return { goal, have, left: Math.max(goal - num(balance), 0), pct: Math.min(100, Math.floor(have * 100 / goal)), done: num(balance) >= goal };
+}
+// Most a category can take in before passing its goal (no limit for regular categories)
+function roomFor(cat, balance) {
+  return cat && cat.goal > 0 ? Math.max(cat.goal - num(balance), 0) : Infinity;
+}
+const TX_TYPES = ['income', 'assign', 'spend', 'move'];
+// Drop anything malformed so bad saved data can't crash the app
+function sanitize(raw) {
+  const s = raw && typeof raw === 'object' ? raw : {};
+  const categories = (Array.isArray(s.categories) ? s.categories : [])
+    .filter(c => c && typeof c === 'object' && c.id && typeof c.name === 'string')
+    .map(c => (c.goal == null || (Number.isInteger(c.goal) && c.goal > 0 && c.goal <= MAX_CENTS)) ? c : { ...c, goal: null });
+  const transactions = (Array.isArray(s.transactions) ? s.transactions : [])
+    .filter(t => t && typeof t === 'object' && t.id && TX_TYPES.includes(t.type) && Number(t.amount) > 0 && Number.isFinite(Number(t.amount)));
+  return { categories, transactions };
+}
+// What a change would do. Blocks any active category going (further) negative;
+// warns when Total or Ready to Assign would newly drop below zero.
+function impact(cats, before, after) {
+  for (const c of cats) {
+    if (c.deletedAt) continue;
+    const b0 = before.bal[c.id] || 0, b1 = after.bal[c.id] || 0;
+    if (b1 < 0 && b1 < b0) return { block: `${c.name} would drop to ${fmt(b1)}.`, warn: '' };
+  }
+  const warn = [];
+  if (after.total < 0 && after.total < before.total) warn.push(`Total → ${fmt(after.total)}`);
+  if (after.rta < 0 && after.rta < before.rta) warn.push(`Ready to Assign → ${fmt(after.rta)}`);
+  return { block: '', warn: warn.join(', ') };
 }
 /* ENGINE END */
 
@@ -541,6 +636,10 @@ function today() {
   const d = new Date();
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
+function isoDay(ms) {
+  const d = new Date(Number(ms) || 0);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function fmtDate(s) {
   if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return '';
@@ -556,7 +655,11 @@ let lastTs = 0;
 function stamp() { lastTs = Math.max(Date.now(), lastTs + 1); return lastTs; }
 
 /* ---------- Storage: Supabase (same interface the app used in the prototype) ---------- */
-const rowToCat = r => ({ id: r.id, name: r.name, createdAt: Date.parse(r.created_at) || 0, deletedAt: r.deleted_at ? Date.parse(r.deleted_at) : null });
+const rowToCat = r => ({
+  id: r.id, name: r.name, createdAt: Date.parse(r.created_at) || 0, deletedAt: r.deleted_at ? Date.parse(r.deleted_at) : null,
+  goal: r.goal_cents == null ? null : Number(r.goal_cents),
+  order: r.sort_order == null ? null : Number(r.sort_order)
+});
 const rowToTx = r => ({
   id: r.id, type: r.type, amount: Number(r.amount_cents), cat: r.category_id, to: r.to_category_id,
   covered: Number(r.covered_cents || 0), note: r.note || '', date: r.tx_date, createdAt: Date.parse(r.created_at) || 0
@@ -568,7 +671,7 @@ const txToRow = t => ({
 
 function makeSupabaseStore(sb, uid) {
   let cats = [], txs = [], cb = null, timer = null, channel = null;
-  const emit = () => { if (cb) cb({ categories: cats.slice(), transactions: txs.slice() }); };
+  const emit = () => { if (cb) cb(sanitize({ categories: cats.slice(), transactions: txs.slice() })); };
   async function fetchAll(table, map) {
     const out = [];
     for (let from = 0; ; from += 1000) {
@@ -602,8 +705,10 @@ function makeSupabaseStore(sb, uid) {
       document.removeEventListener('visibilitychange', onVisible);
       if (channel) { sb.removeChannel(channel); channel = null; }
     },
-    async addCategory(name) {
-      const { data, error } = await sb.from('categories').insert({ name }).select().single();
+    async addCategory(name, goal) {
+      const row = { name };
+      if (goal) row.goal_cents = goal;
+      const { data, error } = await sb.from('categories').insert(row).select().single();
       if (error) throw error;
       cats.push(rowToCat(data)); emit(); return data.id;
     },
@@ -621,6 +726,37 @@ function makeSupabaseStore(sb, uid) {
       const { error } = await sb.from('transactions').delete().eq('id', id);
       if (error) throw error;
       txs = txs.filter(t => t.id !== id); emit();
+    },
+    async updateCategory(id, patch) {
+      const row = {};
+      if ('name' in patch) row.name = patch.name;
+      if ('deletedAt' in patch) row.deleted_at = patch.deletedAt ? new Date(patch.deletedAt).toISOString() : null;
+      if ('goal' in patch) row.goal_cents = patch.goal || null;
+      const { data, error } = await sb.from('categories').update(row).eq('id', id).select().single();
+      if (error) throw error;
+      cats = cats.map(c => c.id === id ? rowToCat(data) : c); emit();
+    },
+    // Save a new category order: ids in display order, position = sort_order
+    async reorder(ids) {
+      const changed = ids.map((id, i) => ({ id, i })).filter(({ id, i }) => { const c = cats.find(x => x.id === id); return c && c.order !== i; });
+      if (!changed.length) return;
+      const prev = cats;
+      cats = cats.map(c => { const i = ids.indexOf(c.id); return i >= 0 ? { ...c, order: i } : c; }); emit();
+      const res = await Promise.all(changed.map(({ id, i }) => sb.from('categories').update({ sort_order: i }).eq('id', id)
+        .then(r => r, error => ({ error }))));
+      const bad = res.find(r => r && r.error);
+      // Put the old order back on screen, then re-sync with what the server actually kept
+      if (bad) { cats = prev; emit(); reload().catch(() => {}); throw bad.error; }
+    },
+    async updateTx(id, patch) {
+      const row = {};
+      if ('amount' in patch) row.amount_cents = patch.amount;
+      if ('covered' in patch) row.covered_cents = patch.covered || 0;
+      if ('note' in patch) row.note = patch.note || null;
+      if ('date' in patch) row.tx_date = patch.date;
+      const { data, error } = await sb.from('transactions').update(row).eq('id', id).select().single();
+      if (error) throw error;
+      txs = txs.map(t => t.id === id ? rowToTx(data) : t); emit();
     },
     async eraseAll() {
       let r = await sb.from('transactions').delete().eq('user_id', uid);
@@ -640,9 +776,13 @@ let loaded = false;
 let tab = 'budget';
 let historyLimit = 25;
 let sheet = null; // { kind, catId, mode, pending }
+let reordering = false, drag = null, renderLater = false, refocusId = null;
 
 const $ = id => document.getElementById(id);
-const activeCats = () => data.categories.filter(c => !c.deletedAt).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+// Your chosen order first (sort_order), then anything never reordered by creation time
+const orderKey = c => (c.order == null ? Infinity : c.order);
+const activeCats = () => data.categories.filter(c => !c.deletedAt)
+  .sort((a, b) => (orderKey(a) - orderKey(b)) || ((a.createdAt || 0) - (b.createdAt || 0)));
 const catById = id => data.categories.find(c => c.id === id);
 function catLabel(id) {
   if (!id) return 'Ready to Assign';
@@ -657,6 +797,8 @@ function canDeleteTx(t) {
 
 /* ---------- Rendering ---------- */
 function render() {
+  // Don't rebuild the list under a finger mid-drag; catch up when the drag ends
+  if (drag) { renderLater = true; return; }
   calc = compute(data.categories, data.transactions);
   $('total-amt').textContent = fmt(calc.total);
   $('total-amt').classList.toggle('neg', calc.total < 0);
@@ -665,8 +807,11 @@ function render() {
   rta.className = 'rta win ' + (calc.rta < 0 ? 'bad' : calc.rta === 0 ? 'zero' : 'ok');
   $('rta-amt').textContent = fmt(calc.rta);
   const cats = activeCats();
+  const overspent = cats.filter(c => (calc.bal[c.id] || 0) < 0);
   let hint;
-  if (calc.rta < 0) hint = 'More is assigned than you have. Move money back here or add income.';
+  if (calc.total < 0) hint = `You've spent ${fmt(-calc.total)} more than you have. Add income to catch up.`;
+  else if (overspent.length) hint = `${overspent[0].name} is overspent. Open it to cover the shortfall.`;
+  else if (calc.rta < 0) hint = 'More is assigned than you have. Move money back here or add income.';
   else if (calc.rta > 0) hint = cats.length ? 'Assign these dollars to a category.' : 'Create a category to assign these dollars.';
   else hint = (data.transactions.length ? 'Every dollar is assigned.' : 'Add income to get started.');
   $('rta-hint').textContent = hint;
@@ -676,22 +821,47 @@ function render() {
   $('no-cats').hidden = !(loaded && !isBlank && !cats.length);
   const list = $('cats');
   list.hidden = !cats.length;
+  if (cats.length < 2) reordering = false;
+  list.classList.toggle('reordering', reordering);
+  $('list-foot').hidden = cats.length < 2;
+  $('reorder-hint').hidden = !reordering;
+  const rb = $('btn-reorder');
+  rb.textContent = reordering ? 'Done' : 'Reorder'; rb.classList.toggle('primary', reordering);
   list.innerHTML = cats.map(c => {
     const b = calc.bal[c.id] || 0;
-    const cls = b < 0 ? 'neg' : (b === 0 ? 'zero' : '');
-    return `<li class="cat"><button data-action="open-cat" data-id="${esc(c.id)}">
-      <span class="cur" aria-hidden="true"></span>
+    const g = goalInfo(c.goal, b);
+    const cls = b < 0 ? 'neg' : g ? (g.done ? 'met' : 'goal') : (b === 0 ? 'zero' : '');
+    const li = g ? 'cat goal-cat' : 'cat';
+    if (reordering) return `<li class="${li}" data-id="${esc(c.id)}">
+      <button type="button" class="grip" data-grip aria-label="Move ${esc(c.name)}. Use the up and down arrow keys."></button>
+      <div class="cat-body"><span class="cat-line">
       <span class="cat-name">${esc(c.name)}</span>
       <span class="lead" aria-hidden="true"></span>
-      <span class="cat-bal num ${cls}">${fmt(b)}</span></button></li>`;
+      <span class="cat-bal num ${cls}">${fmt(b)}</span></span>${g ? goalRow(g, b) : ''}</div></li>`;
+    return `<li class="${li}"><button data-action="open-cat" data-id="${esc(c.id)}">
+      <span class="cat-line"><span class="cur" aria-hidden="true"></span>
+      <span class="cat-name">${esc(c.name)}</span>
+      <span class="lead" aria-hidden="true"></span>
+      <span class="cat-bal num ${cls}">${fmt(b)}</span></span>${g ? goalRow(g, b) : ''}</button></li>`;
   }).join('');
+  if (refocusId) {
+    const gEl = [...list.querySelectorAll('[data-grip]')].find(x => x.closest('.cat').dataset.id === refocusId);
+    refocusId = null; if (gEl) gEl.focus();
+  }
 
   renderHistory();
   if (sheet) refreshSheet();
 }
 
+function goalRow(g, b) {
+  const txt = b < 0 ? 'Overspent' : g.done ? 'Goal met!' : fmt(g.left) + ' to go';
+  const cls = b < 0 ? 'neg' : g.done ? 'done' : '';
+  return `<span class="goal-row" role="img" aria-label="${g.pct}% of ${esc(fmt(g.goal))} goal"><span class="bar${g.done ? ' done' : ''}"><i style="width:${g.pct}%"></i></span>
+    <span class="goal-txt num ${cls}">${esc(txt)}</span></span>`;
+}
+
 function txView(t, ctxCat) {
-  const a = t.amount | 0;
+  const a = num(t.amount);
   let title, amt, cls, extra = '';
   if (t.type === 'income') { title = 'Income'; amt = '+' + fmt(a); cls = 'pos'; }
   else if (t.type === 'spend') {
@@ -708,7 +878,7 @@ function txView(t, ctxCat) {
   }
   const meta = [fmtDate(t.date), t.note].filter(Boolean).map(esc).join(' · ');
   const side = canDeleteTx(t)
-    ? `<button class="tx-del" data-action="del-tx" data-id="${esc(t.id)}">Delete</button>`
+    ? `<button class="tx-del" data-action="edit-tx" data-id="${esc(t.id)}">Edit</button><button class="tx-del" data-action="del-tx" data-id="${esc(t.id)}">Delete</button>`
     : `<span class="tx-locked">Category deleted</span>`;
   return `<li class="tx">
     <span class="tx-title">${esc(title)}</span>
@@ -727,6 +897,15 @@ function renderHistory() {
   $('history-empty').hidden = !!all.length || !loaded;
   $('history-count').textContent = all.length ? `Showing ${shown.length} of ${all.length}` : '';
   $('btn-more').hidden = all.length <= historyLimit;
+
+  const gone = data.categories.filter(c => c.deletedAt).sort((a, b) => (b.deletedAt || 0) - (a.deletedAt || 0));
+  $('deleted-wrap').hidden = !gone.length;
+  $('deleted-list').innerHTML = gone.map(c => `<li class="tx">
+    <span class="tx-title">${esc(c.name)}</span>
+    <span class="tx-amt num neutral">${fmt(calc.bal[c.id] || 0)}</span>
+    <span class="tx-meta">Deleted ${esc(fmtDate(isoDay(c.deletedAt)))}</span>
+    <span class="tx-side"><button class="tx-del" data-action="restore-cat" data-id="${esc(c.id)}">Restore</button></span>
+  </li>`).join('');
 }
 
 function setTab(t) {
@@ -742,9 +921,9 @@ function setTab(t) {
 }
 
 /* ---------- Sheets ---------- */
-function moneyField() {
-  return `<label class="field"><span>Amount</span><div class="money"><span>$</span>
-    <input id="f-amount" inputmode="decimal" autocomplete="off" placeholder="0.00" aria-label="Amount in dollars"></div></label>`;
+function moneyField(label = 'Amount', id = 'f-amount') {
+  return `<label class="field"><span>${esc(label)}</span><div class="money"><span>$</span>
+    <input id="${id}" inputmode="decimal" autocomplete="off" placeholder="0.00" aria-label="${esc(label)} in dollars"></div></label>`;
 }
 function noteDateFields(ph) {
   return `<div class="row2">
@@ -773,6 +952,8 @@ function closeSheet() {
   setTimeout(() => { if (!sheet) { bd.hidden = true; $('sheet').innerHTML = ''; } }, 200);
 }
 
+const GOAL_HINT = 'Shows gold until its balance reaches the goal. You can still spend and move this money.';
+
 function renderSheet() {
   const el = $('sheet');
   if (sheet.kind === 'income') {
@@ -782,15 +963,55 @@ function renderSheet() {
       <p class="err" id="f-err" role="alert"></p>
       <div class="actions"><button class="btn primary" type="submit" id="f-submit">Add income</button></div></form>`;
   } else if (sheet.kind === 'new-cat') {
+    const isGoal = sheet.catType === 'goal';
     el.innerHTML = head('Categories', 'New category') + `<form class="form" id="f" novalidate>
-      <label class="field"><span>Name</span><input id="f-name" maxlength="40" placeholder="Groceries" autocomplete="off"></label>
+      <div class="seg two" role="group" aria-label="Category type">
+        <button type="button" data-action="cat-type" data-type="regular" aria-pressed="${!isGoal}">Regular</button>
+        <button type="button" data-action="cat-type" data-type="goal" aria-pressed="${isGoal}">Savings goal</button>
+      </div>
+      <label class="field"><span>Name</span><input id="f-name" maxlength="40" placeholder="${isGoal ? 'Vacation' : 'Groceries'}" autocomplete="off"></label>
+      <div id="goal-field" ${isGoal ? '' : 'hidden'}>${moneyField('Goal amount', 'f-goal')}</div>
+      <p class="hint" id="type-hint">${isGoal ? GOAL_HINT : 'For everyday spending like groceries or gas.'}</p>
       <p class="err" id="f-err" role="alert"></p>
       <div class="actions"><button class="btn primary" type="submit" id="f-submit">Create category</button></div></form>`;
+  } else if (sheet.kind === 'rename') {
+    const c = catById(sheet.catId);
+    el.innerHTML = head('Category', 'Rename ' + (c ? c.name : '')) + `<form class="form" id="f" novalidate>
+      <label class="field"><span>New name</span><input id="f-name" maxlength="40" autocomplete="off" value="${esc(c ? c.name : '')}"></label>
+      <p class="err" id="f-err" role="alert"></p>
+      <div class="actions"><button class="btn primary" type="submit" id="f-submit">Save name</button><button class="btn" type="button" data-action="back">Cancel</button></div></form>`;
+  } else if (sheet.kind === 'goal') {
+    const c = catById(sheet.catId);
+    const has = !!(c && c.goal > 0);
+    el.innerHTML = head(has ? 'Savings goal' : 'Category', (has ? 'Edit goal: ' : 'Make a goal: ') + (c ? c.name : '')) + `<form class="form" id="f" novalidate>
+      ${moneyField('Goal amount', 'f-goal')}
+      <p class="hint">${GOAL_HINT}</p>
+      <p class="err" id="f-err" role="alert"></p>
+      <div class="actions"><button class="btn primary" type="submit" id="f-submit">Save goal</button><button class="btn" type="button" data-action="back">Cancel</button></div>
+      ${has ? `<div class="cat-tools"><button type="button" class="btn small" data-action="clear-goal">Make it a regular category</button></div>` : ''}</form>`;
+    if (has) $('f-goal').value = (c.goal / 100).toFixed(2);
+  } else if (sheet.kind === 'tx') {
+    const t = data.transactions.find(x => x.id === sheet.txId);
+    if (!t) { closeSheet(); return; }
+    const titles = { income: 'Edit income', spend: 'Edit spending', assign: 'Edit assignment', move: 'Edit move' };
+    const where = t.type === 'income' ? 'Total balance' : t.type === 'move' ? catLabel(t.cat) + ' → ' + catLabel(t.to) : catLabel(t.cat);
+    el.innerHTML = head(where, titles[t.type]) + `<form class="form" id="f" novalidate>
+      ${moneyField()}${noteDateFields('')}
+      <p class="err" id="f-err" role="alert"></p>
+      <div class="actions"><button class="btn primary" type="submit" id="f-submit">Save changes</button><button class="btn" type="button" data-action="back">Cancel</button></div></form>`;
+    $('f-amount').value = (num(t.amount) / 100).toFixed(2);
+    $('f-note').value = t.note || '';
+    $('f-date').value = t.date || today();
   } else if (sheet.kind === 'cat') {
     const c = catById(sheet.catId);
     const m = sheet.mode;
-    el.innerHTML = head('Category', c ? c.name : '') + `
+    el.innerHTML = head(c && c.goal ? 'Savings goal' : 'Category', c ? c.name : '') + `
       <p class="sheet-bal num" data-live="bal"></p>
+      <div class="goal-box" data-live="goal" hidden>
+        <span class="goal-row"><span class="bar"><i></i></span><span class="goal-txt num"></span></span>
+        <p data-live="goal-line"></p>
+        <button type="button" class="btn small primary" data-action="fund" data-live="fund-btn" hidden></button>
+      </div>
       <div class="seg" role="group" aria-label="Action">
         <button type="button" data-action="mode" data-mode="spend" aria-pressed="${m === 'spend'}">Spend</button>
         <button type="button" data-action="mode" data-mode="assign" aria-pressed="${m === 'assign'}">Assign</button>
@@ -799,6 +1020,7 @@ function renderSheet() {
       <form class="form" id="f" novalidate>
         ${moneyField()}
         <label class="field" id="to-field" ${m === 'move' ? '' : 'hidden'}><span>Move to</span><select id="f-to"></select></label>
+        <div class="fix" id="f-over" hidden><p data-live="over-text"></p><button type="button" class="btn small primary" data-action="cover-over" data-live="over-btn">Cover it</button></div>
         <div class="fix" id="f-fix" hidden><p data-live="fix-text"></p><button type="button" class="btn small primary" data-action="fix-rta" data-live="fix-btn"></button></div>
         ${noteDateFields(m === 'spend' ? 'Meijer' : '')}
         <p class="hint" data-live="hint"></p>
@@ -808,7 +1030,7 @@ function renderSheet() {
       </form>
       <h3>Recent</h3>
       <ul class="tx-list" data-live="recent"></ul>
-      <div><button type="button" class="btn small danger" data-action="del-cat" id="btn-del-cat">Delete category</button></div>`;
+      <div class="cat-tools"><button type="button" class="btn small" data-action="rename-cat">Rename</button><button type="button" class="btn small" data-action="goal-cat">${c && c.goal ? 'Edit goal' : 'Make it a goal'}</button><button type="button" class="btn small danger" data-action="del-cat" id="btn-del-cat">Delete category</button></div>`;
     applyMode();
     refreshSheet();
   }
@@ -832,18 +1054,42 @@ function setSubmitLabel() {
 }
 
 function refreshSheet() {
+  if (sheet && sheet.kind === 'tx' && !data.transactions.some(x => x.id === sheet.txId)) { closeSheet(); return; }
   if (!sheet || sheet.kind !== 'cat') return;
   const c = catById(sheet.catId);
   if (!c || c.deletedAt) { closeSheet(); return; }
   const el = $('sheet');
   const b = calc.bal[c.id] || 0;
   const balEl = el.querySelector('[data-live="bal"]');
+  const g = goalInfo(c.goal, b);
   balEl.textContent = fmt(b);
   balEl.classList.toggle('neg', b < 0);
+  balEl.classList.toggle('goal', !!g && b >= 0 && !g.done);
+  balEl.classList.toggle('met', !!g && g.done);
+
+  // Savings goal panel: progress, what's left, and a one-tap Fund button
+  const gb = el.querySelector('[data-live="goal"]');
+  gb.hidden = !g;
+  if (g) {
+    gb.classList.toggle('done', g.done);
+    gb.querySelector('.bar').classList.toggle('done', g.done);
+    gb.querySelector('.bar > i').style.width = g.pct + '%';
+    const gt = gb.querySelector('.goal-txt');
+    gt.textContent = g.pct + '%'; gt.className = 'goal-txt num' + (b < 0 ? ' neg' : g.done ? ' done' : '');
+    const canFund = Math.min(g.left, calc.rta, calc.available);
+    let line = g.done ? `Goal met! ${fmt(g.goal)} saved.` : `Goal ${fmt(g.goal)} · ${fmt(g.left)} to go`;
+    if (!g.done && canFund <= 0) line += '. Add income to keep saving.';
+    else if (!g.done && canFund < g.left) line += `. ${fmt(canFund)} is ready to assign.`;
+    gb.querySelector('[data-live="goal-line"]').textContent = line;
+    const fb = gb.querySelector('[data-live="fund-btn"]');
+    fb.hidden = g.done || canFund <= 0;
+    fb.textContent = `Fund ${fmt(Math.max(canFund, 0))}`; fb.dataset.amt = String(Math.max(canFund, 0));
+  }
+
   const m = sheet.mode;
   let hint;
   if (m === 'spend') hint = b < 0 ? `Overspent by ${fmt(-b)}.` : `Available to spend: ${fmt(b)}`;
-  else if (m === 'assign') hint = `Ready to Assign: ${fmt(calc.rta)}`;
+  else if (m === 'assign') hint = `Ready to Assign: ${fmt(calc.rta)}` + (g ? (g.done ? ' · Goal already met' : ` · Goal needs ${fmt(g.left)}`) : '');
   else hint = `Available to move: ${fmt(Math.max(b, 0))}`;
   el.querySelector('[data-live="hint"]').textContent = hint;
 
@@ -866,7 +1112,16 @@ function refreshSheet() {
     fb.textContent = `Fill ${fmt(amt)}`; fb.dataset.amt = String(amt);
   }
 
-  const recent = sortTx(data.transactions.filter(t => t.cat === c.id || t.to === c.id)).slice(0, 4);
+  // Overspent (e.g. from older data): offer to cover the hole from Ready to Assign
+  const over = $('f-over');
+  over.hidden = !(b < 0);
+  if (b < 0) {
+    over.querySelector('[data-live="over-text"]').textContent = `${c.name} is overspent by ${fmt(-b)}.`;
+    const ob = over.querySelector('[data-live="over-btn"]');
+    ob.textContent = `Cover ${fmt(-b)}`; ob.dataset.amt = String(-b);
+  }
+
+  const recent = sortRecent(data.transactions.filter(t => t.cat === c.id || t.to === c.id)).slice(0, 4);
   el.querySelector('[data-live="recent"]').innerHTML = recent.length
     ? recent.map(t => txView(t, c.id)).join('')
     : '<li class="muted-note" style="padding:8px 0">No transactions yet.</li>';
@@ -878,18 +1133,19 @@ function refreshSheet() {
 function showCover(pending) {
   sheet.pending = pending;
   const c = catById(sheet.catId);
-  const after = (calc.bal[c.id] || 0) - pending.amount;
+  const have = Math.max(calc.bal[c.id] || 0, 0);
   const rtaAfter = calc.rta - pending.short;
   $('f-actions').hidden = true;
   const box = $('f-cover');
   box.hidden = false;
-  box.innerHTML = `<p><strong>This puts ${esc(c.name)} at ${fmt(after)}.</strong> Cover ${fmt(pending.short)} from Ready to Assign?</p>
-    ${rtaAfter < 0 ? `<p class="warn">Ready to Assign will go to ${fmt(rtaAfter)}.</p>` : ''}
+  box.innerHTML = `<p><strong>${have > 0
+      ? `${esc(c.name)} has ${fmt(have)}. The other ${fmt(pending.short)} of this spend will come from Ready to Assign.`
+      : `${esc(c.name)} has nothing left, so all ${fmt(pending.short)} will come from Ready to Assign.`}</strong></p>
+    ${rtaAfter < 0 ? `<p class="warn">Ready to Assign will go to ${fmt(rtaAfter)}. Move money from another category to fix it.</p>` : ''}
     <div class="actions">
-      <button type="button" class="btn primary" data-action="cover-yes">Cover ${fmt(pending.short)}</button>
-      <button type="button" class="btn" data-action="cover-no">Leave negative</button>
-    </div>
-    <div><button type="button" class="link" data-action="cover-back">Change amount</button></div>`;
+      <button type="button" class="btn primary" data-action="cover-yes">Record ${fmt(pending.amount)}</button>
+      <button type="button" class="btn" data-action="cover-back">Change amount</button>
+    </div>`;
 }
 function hideCover() {
   if (!sheet) return;
@@ -903,10 +1159,11 @@ let toastTimer;
 function toast(msg, bad) {
   const t = $('toast');
   t.textContent = msg; t.classList.toggle('bad', !!bad); t.classList.toggle('hud', !bad); t.classList.add('show');
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), bad ? 4500 : 2600);
 }
 function writeError(e) {
   if (e && e.code === '23505') return 'You already have a category with that name.';
+  if (e && (e.code === 'PGRST204' || e.code === '42703' || /goal_cents|sort_order/.test(e.message || ''))) return 'Goals and reordering need a one-time database update. Run the migration SQL in Supabase.';
   if (e && (e.code === 'PGRST301' || e.status === 401 || /jwt/i.test(e.message || ''))) return 'Your session expired. Sign in again.';
   return "Couldn't save that. Check your connection and try again.";
 }
@@ -922,20 +1179,56 @@ function readTxFields() {
 }
 
 async function submitForm() {
+  if (!sheet || sheet.busy) return;
+  const s0 = sheet; s0.busy = true;
+  try { await submitFormInner(); } finally { s0.busy = false; }
+}
+
+async function submitFormInner() {
   const err = $('f-err'); err.textContent = '';
   const btn = $('f-submit');
   if (sheet.kind === 'new-cat') {
     const name = ($('f-name').value || '').trim().replace(/\s+/g, ' ');
     if (!name) { err.textContent = 'Give the category a name.'; return; }
     if (activeCats().some(c => c.name.toLowerCase() === name.toLowerCase())) { err.textContent = `You already have a category called ${name}.`; return; }
+    let goal = null;
+    if (sheet.catType === 'goal') {
+      goal = parseCents($('f-goal').value);
+      if (goal === Infinity) { err.textContent = 'Goals can be up to $9,999,999.99.'; return; }
+      if (!goal) { err.textContent = 'Enter a goal amount like 500.00.'; return; }
+    }
     let id;
-    const ok = await run(btn, async () => { id = await store.addCategory(name); });
-    if (ok) { toast(`Created ${name}`); openSheet({ kind: 'cat', catId: id, mode: 'assign' }); }
+    const ok = await run(btn, async () => { id = await store.addCategory(name, goal); });
+    if (ok) { toast(goal ? `Created ${name} · goal ${fmt(goal)}` : `Created ${name}`); openSheet({ kind: 'cat', catId: id, mode: 'assign' }); }
+    return;
+  }
+  if (sheet.kind === 'goal') {
+    const c = catById(sheet.catId);
+    if (!c || c.deletedAt) { closeSheet(); return; }
+    const goal = parseCents($('f-goal').value);
+    if (goal === Infinity) { err.textContent = 'Goals can be up to $9,999,999.99.'; return; }
+    if (!goal) { err.textContent = 'Enter a goal amount like 500.00.'; return; }
+    if (goal === c.goal) { backFromSheet(); return; }
+    const ok = await run(btn, () => store.updateCategory(c.id, { goal }));
+    if (ok) { toast((calc.bal[c.id] || 0) >= goal ? `Goal set to ${fmt(goal)} · already met!` : `Goal set to ${fmt(goal)}`); backFromSheet(); }
+    return;
+  }
+  if (sheet.kind === 'rename') {
+    const c = catById(sheet.catId);
+    const name = ($('f-name').value || '').trim().replace(/\s+/g, ' ');
+    if (!name) { err.textContent = 'Give the category a name.'; return; }
+    if (activeCats().some(x => x.id !== c.id && x.name.toLowerCase() === name.toLowerCase())) { err.textContent = `You already have a category called ${name}.`; return; }
+    if (name === c.name) { openSheet({ kind: 'cat', catId: c.id, mode: 'spend' }); return; }
+    const ok = await run(btn, () => store.updateCategory(c.id, { name }));
+    if (ok) { toast(`Renamed to ${name}`); openSheet({ kind: 'cat', catId: c.id, mode: 'spend' }); }
     return;
   }
   const amount = parseCents($('f-amount').value);
+  if (amount === Infinity) { err.textContent = 'Amounts can be up to $9,999,999.99.'; return; }
   if (!amount) { err.textContent = 'Enter an amount like 11.11 (up to 2 decimal places).'; return; }
   const { note, date } = readTxFields();
+
+  if (sheet.kind === 'tx') { await saveTxEdit(amount, note, date); return; }
 
   if (sheet.kind === 'income') {
     const ok = await run(btn, () => store.addTx({ type: 'income', amount, cat: null, to: null, covered: 0, note, date, createdAt: stamp() }));
@@ -950,8 +1243,16 @@ async function submitForm() {
     if (short > 0) { showCover({ amount, note, date, short }); return; }
     await commitSpend(amount, note, date, 0);
   } else if (sheet.mode === 'assign') {
-    if (amount > calc.rta) {
-      err.textContent = calc.rta > 0 ? `Only ${fmt(calc.rta)} is ready to assign.` : 'Nothing is ready to assign. Add income or move money back first.';
+    const free = Math.min(calc.rta, calc.available), room = roomFor(c, b);
+    const avail = Math.min(free, room);
+    if (amount > avail && room < free) {
+      err.textContent = room > 0 ? `${c.name} needs only ${fmt(room)} more to reach its ${fmt(c.goal)} goal.` : `${c.name} already reached its ${fmt(c.goal)} goal.`;
+      return;
+    }
+    if (amount > avail) {
+      err.textContent = avail > 0
+        ? `Only ${fmt(avail)} is ready to assign.` + (calc.available < calc.rta ? ' Cover overspent categories first.' : '')
+        : 'Nothing is ready to assign. Add income or move money back first.';
       return;
     }
     const ok = await run(btn, () => store.addTx({ type: 'assign', amount, cat: c.id, to: null, covered: 0, note, date, createdAt: stamp() }));
@@ -959,6 +1260,11 @@ async function submitForm() {
   } else {
     if (amount > b) { err.textContent = b > 0 ? `Only ${fmt(b)} is in ${c.name}.` : `${c.name} has nothing to move.`; return; }
     const to = $('f-to').value || null;
+    const toCat = to && catById(to), toRoom = roomFor(toCat, calc.bal[to] || 0);
+    if (amount > toRoom) {
+      err.textContent = toRoom > 0 ? `${toCat.name} needs only ${fmt(toRoom)} more to reach its ${fmt(toCat.goal)} goal.` : `${toCat.name} already reached its ${fmt(toCat.goal)} goal.`;
+      return;
+    }
     const ok = await run(btn, () => store.addTx({ type: 'move', amount, cat: c.id, to, covered: 0, note, date, createdAt: stamp() }));
     if (ok) { toast(to ? `Moved ${fmt(amount)} to ${catLabel(to)}` : `Returned ${fmt(amount)} to Ready to Assign`); clearAmount(); }
   }
@@ -968,6 +1274,40 @@ async function commitSpend(amount, note, date, covered) {
   const c = catById(sheet.catId);
   const ok = await run($('f-submit'), () => store.addTx({ type: 'spend', amount, cat: c.id, to: null, covered, note, date, createdAt: stamp() }));
   if (ok) { hideCover(); toast(`Spent ${fmt(amount)} from ${c.name}`); clearAmount(); }
+  return ok;
+}
+
+async function saveTxEdit(amount, note, date) {
+  const err = $('f-err'), btn = $('f-submit');
+  const t = data.transactions.find(x => x.id === sheet.txId);
+  if (!t) { closeSheet(); return; }
+  const next = { ...t, amount, note, date };
+  if (t.type === 'spend') {
+    // Always cover: whatever the category can't pay comes from Ready to Assign
+    const without = compute(data.categories, data.transactions.filter(x => x.id !== t.id));
+    next.covered = shortfallFor(without.bal[t.cat] || 0, amount);
+  }
+  if (t.type === 'assign' && amount > num(t.amount)) {
+    const room = Math.min(calc.rta, calc.available);
+    if (amount - num(t.amount) > room) { err.textContent = `You can add at most ${fmt(Math.max(room, 0))} more to this assignment.`; return; }
+  }
+  const after = compute(data.categories, data.transactions.map(x => x.id === t.id ? next : x));
+  const im = impact(data.categories, calc, after);
+  if (im.block) { err.textContent = `Can't save: ${im.block}`; return; }
+  // Assigning or moving more into a savings goal can't push it past the goal
+  const intoId = t.type === 'assign' ? t.cat : t.type === 'move' ? t.to : null, into = intoId && catById(intoId);
+  if (into && into.goal > 0 && (after.bal[intoId] || 0) > into.goal && (after.bal[intoId] || 0) > (calc.bal[intoId] || 0)) {
+    err.textContent = `Can't save: that would put ${into.name} over its ${fmt(into.goal)} goal.`; return;
+  }
+  if (im.warn && !sheet.confirmWarn) { sheet.confirmWarn = true; err.textContent = `Heads up: ${im.warn}. Tap Save again to confirm.`; return; }
+  const ok = await run(btn, () => store.updateTx(t.id, { amount, note, date, covered: num(next.covered) }));
+  if (ok) { toast('Saved changes'); backFromSheet(); }
+}
+
+function backFromSheet() {
+  const from = sheet && (sheet.from || (sheet.kind === 'rename' || sheet.kind === 'goal' ? sheet.catId : null));
+  const c = from && catById(from);
+  if (c && !c.deletedAt) openSheet({ kind: 'cat', catId: c.id, mode: 'spend' }); else closeSheet();
 }
 function clearAmount() { $('f-amount').value = ''; $('f-note').value = ''; }
 
@@ -1002,12 +1342,65 @@ document.addEventListener('click', e => {
   const a = el.dataset.action;
   if (a === 'tab') setTab(el.dataset.tab);
   else if (a === 'income') openSheet({ kind: 'income' });
-  else if (a === 'new-cat') openSheet({ kind: 'new-cat' });
+  else if (a === 'new-cat') openSheet({ kind: 'new-cat', catType: 'regular' });
+  else if (a === 'reorder') { reordering = !reordering; render(); }
+  else if (a === 'cat-type') {
+    if (!sheet || sheet.kind !== 'new-cat') return;
+    const goal = el.dataset.type === 'goal';
+    sheet.catType = goal ? 'goal' : 'regular';
+    $('sheet').querySelectorAll('[data-action="cat-type"]').forEach(b => b.setAttribute('aria-pressed', String(b === el)));
+    $('goal-field').hidden = !goal;
+    $('f-name').placeholder = goal ? 'Vacation' : 'Groceries';
+    $('type-hint').textContent = goal ? GOAL_HINT : 'For everyday spending like groceries or gas.';
+    $('f-err').textContent = '';
+    if (goal && $('f-name').value.trim()) $('f-goal').focus();
+  }
+  else if (a === 'goal-cat') openSheet({ kind: 'goal', catId: sheet.catId });
+  else if (a === 'clear-goal') {
+    const c = catById(sheet.catId); if (!c) return;
+    run(el, () => store.updateCategory(c.id, { goal: null })).then(ok => { if (ok) { toast(`${c.name} is a regular category now`); backFromSheet(); } });
+  }
+  else if (a === 'fund') {
+    const c = catById(sheet.catId), amt = Number(el.dataset.amt);
+    if (!c || !(amt > 0)) return;
+    // Re-check against live numbers so a stale button can't overfill or overdraw
+    const g = goalInfo(c.goal, calc.bal[c.id] || 0);
+    if (!g || amt > Math.min(g.left, calc.rta, calc.available)) { refreshSheet(); return; }
+    run(el, () => store.addTx({ type: 'assign', amount: amt, cat: c.id, to: null, covered: 0, note: 'Goal funding', date: today(), createdAt: stamp() }))
+      .then(ok => { if (ok) toast(amt >= g.left ? `Funded ${fmt(amt)} · ${c.name} goal met!` : `Funded ${fmt(amt)} to ${c.name}`); });
+  }
   else if (a === 'open-cat') openSheet({ kind: 'cat', catId: el.dataset.id, mode: 'spend' });
   else if (a === 'close') closeSheet();
   else if (a === 'mode') { sheet.mode = el.dataset.mode; applyMode(); refreshSheet(); }
-  else if (a === 'cover-yes') { const p = sheet.pending; if (p) commitSpend(p.amount, p.note, p.date, p.short); }
-  else if (a === 'cover-no') { const p = sheet.pending; if (p) commitSpend(p.amount, p.note, p.date, 0); }
+  else if (a === 'cover-yes') {
+    // Take the pending spend before saving so a double tap can't save it twice
+    const p = sheet && sheet.pending; if (!p) return;
+    sheet.pending = null;
+    $('f-cover').querySelectorAll('button').forEach(b => { b.disabled = true; });
+    commitSpend(p.amount, p.note, p.date, p.short).then(ok => { if (!ok && sheet && sheet.kind === 'cat') showCover(p); });
+  }
+  else if (a === 'cover-over') {
+    const c = catById(sheet.catId), amt = Number(el.dataset.amt);
+    run(el, () => store.addTx({ type: 'assign', amount: amt, cat: c.id, to: null, covered: 0, note: 'Covered overspending', date: today(), createdAt: stamp() }))
+      .then(ok => { if (ok) toast(`Covered ${fmt(amt)} for ${c.name}`); });
+  }
+  else if (a === 'edit-tx') openSheet({ kind: 'tx', txId: el.dataset.id, from: sheet && sheet.kind === 'cat' ? sheet.catId : null });
+  else if (a === 'rename-cat') openSheet({ kind: 'rename', catId: sheet.catId });
+  else if (a === 'back') backFromSheet();
+  else if (a === 'restore-cat') {
+    const c = catById(el.dataset.id); if (!c) return;
+    if (activeCats().some(x => x.name.toLowerCase() === c.name.toLowerCase())) { toast(`You already have a category called ${c.name}. Rename that one first.`, true); return; }
+    if (!el.dataset.armed) {
+      const b = calc.bal[c.id] || 0, parts = [];
+      if (b > 0) parts.push(`${fmt(b)} leaves Ready to Assign`);
+      if (b < 0) parts.push(`brings back a ${fmt(b)} shortfall`);
+      if (calc.rta - b < 0 && b > 0) parts.push(`Ready to Assign → ${fmt(calc.rta - b)}`);
+      el.dataset.warn = parts.join(', ');
+    }
+    arm(el, 'Restore', el.dataset.warn ? `Tap again: ${el.dataset.warn}` : 'Tap to confirm', () => {
+      run(null, () => store.updateCategory(c.id, { deletedAt: null })).then(ok => { if (ok) toast(`Restored ${c.name}`); });
+    });
+  }
   else if (a === 'cover-back') { hideCover(); $('f-amount').focus(); }
   else if (a === 'fix-rta') {
     $('f-amount').value = (Number(el.dataset.amt) / 100).toFixed(2);
@@ -1017,7 +1410,13 @@ document.addEventListener('click', e => {
   else if (a === 'more') { historyLimit += 25; renderHistory(); }
   else if (a === 'example') loadExample();
   else if (a === 'del-tx') {
-    arm(el, 'Delete', 'Tap to confirm', () => {
+    const tx = data.transactions.find(x => x.id === el.dataset.id); if (!tx) return;
+    if (!el.dataset.armed) {
+      const im = impact(data.categories, calc, compute(data.categories, data.transactions.filter(x => x.id !== tx.id)));
+      if (im.block) { toast(`Can't delete this: ${im.block} Delete its spending or move money in first.`, true); return; }
+      el.dataset.warn = im.warn;
+    }
+    arm(el, 'Delete', el.dataset.warn ? `Tap again: ${el.dataset.warn}` : 'Tap to confirm', () => {
       const t = data.transactions.find(x => x.id === el.dataset.id);
       run(null, () => store.deleteTx(el.dataset.id)).then(ok => { if (ok && t) toast('Transaction deleted'); });
     });
@@ -1035,8 +1434,73 @@ document.addEventListener('click', e => {
   }
 });
 document.addEventListener('change', e => { if (e.target.id === 'f-to' && sheet) setSubmitLabel(); });
+// Any edit after the overspend prompt opens cancels it, so the old amount can't be saved
+document.addEventListener('input', e => {
+  if (!sheet || !['f-amount', 'f-note', 'f-date'].includes(e.target.id)) return;
+  if (sheet.pending) hideCover();
+  sheet.confirmWarn = false;
+});
 document.addEventListener('submit', e => { if (e.target.id === 'f') { e.preventDefault(); submitForm(); } });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && sheet) closeSheet(); });
+
+/* ---------- Reorder: drag a category by its grip ---------- */
+function listIds() { return [...$('cats').children].map(li => li.dataset.id).filter(Boolean); }
+function saveOrder(before) {
+  const ids = listIds();
+  if (ids.join() === before.join()) return;
+  run(null, () => store.reorder(ids)).then(ok => { if (!ok) render(); });
+}
+function placeDragged() {
+  const { li, startTop, startY } = drag;
+  const want = startTop + (drag.y + scrollY - startY);
+  let p = li.previousElementSibling, n = li.nextElementSibling;
+  while (p && want < p.offsetTop + p.offsetHeight / 2) { li.parentNode.insertBefore(li, p); p = li.previousElementSibling; }
+  while (n && want + li.offsetHeight > n.offsetTop + n.offsetHeight / 2) { li.parentNode.insertBefore(n, li); n = li.nextElementSibling; }
+  // Keep the row under the finger, but never drag it outside the list
+  const list = li.parentNode, min = list.firstElementChild.offsetTop, max = list.lastElementChild.offsetTop + list.lastElementChild.offsetHeight - li.offsetHeight;
+  li.style.transform = `translateY(${Math.round(Math.max(min, Math.min(max, want)) - li.offsetTop)}px)`;
+}
+function dragTick() {
+  if (!drag) return;
+  // Auto-scroll when holding a row near the top or bottom of the screen
+  const bottom = innerHeight - ($('tabbar').offsetHeight || 0);
+  const v = drag.y < 70 ? -10 : drag.y > bottom - 50 ? 10 : 0;
+  if (v) { scrollBy(0, v); placeDragged(); }
+  drag.raf = requestAnimationFrame(dragTick);
+}
+function endDrag() {
+  if (!drag) return;
+  const { li, before, raf } = drag;
+  cancelAnimationFrame(raf);
+  li.classList.remove('dragging'); li.style.transform = '';
+  drag = null;
+  saveOrder(before);
+  if (renderLater) { renderLater = false; render(); }
+}
+document.addEventListener('pointerdown', e => {
+  const g = e.target.closest('[data-grip]');
+  if (!g || !reordering || drag || e.button > 0) return;
+  e.preventDefault();
+  const li = g.closest('.cat');
+  drag = { li, id: li.dataset.id, startTop: li.offsetTop, startY: e.clientY + scrollY, y: e.clientY, before: listIds(), raf: 0 };
+  try { g.setPointerCapture(e.pointerId); } catch (err) {}
+  li.classList.add('dragging');
+  drag.raf = requestAnimationFrame(dragTick);
+});
+document.addEventListener('pointermove', e => { if (drag) { drag.y = e.clientY; placeDragged(); } });
+document.addEventListener('pointerup', endDrag);
+document.addEventListener('pointercancel', endDrag);
+document.addEventListener('keydown', e => {
+  const g = e.target.closest && e.target.closest('[data-grip]');
+  if (!g || !reordering || drag || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+  e.preventDefault();
+  const li = g.closest('.cat'), before = listIds();
+  const sib = e.key === 'ArrowUp' ? li.previousElementSibling : li.nextElementSibling;
+  if (!sib) return;
+  if (e.key === 'ArrowUp') li.parentNode.insertBefore(li, sib); else li.parentNode.insertBefore(sib, li);
+  g.focus(); refocusId = li.dataset.id;
+  saveOrder(before);
+});
 
 /* ---------- Auth: email + password with email confirmation (Supabase) ---------- */
 const CFG = window.BUDGET_CONFIG || {};
@@ -1050,7 +1514,7 @@ function hideAppViews() {
 
 function showSignedOut(mode, msg, kind) {
   if (store && store.stop) store.stop();
-  store = null; currentUser = null; data = { categories: [], transactions: [] }; loaded = false;
+  store = null; currentUser = null; data = { categories: [], transactions: [] }; loaded = false; reordering = false; drag = null;
   if (sheet) closeSheet();
   render(); // clear the previous person's numbers from the page
   hideAppViews();

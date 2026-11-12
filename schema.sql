@@ -1,5 +1,6 @@
 -- Envelope Budget: Supabase schema for go-live
 -- Run once in Supabase: SQL Editor > New query > paste > Run.
+-- (For a fresh project only. An existing project runs supabase/migration-goals-and-order.sql instead.)
 -- Mirrors the prototype's data model exactly, so the page's storage layer
 -- swaps from the prototype store to Supabase without changing any money logic.
 --
@@ -21,7 +22,11 @@ create table public.categories (
   user_id     uuid not null default auth.uid() references auth.users(id) on delete cascade,
   name        text not null check (char_length(name) between 1 and 40),
   created_at  timestamptz not null default now(),
-  deleted_at  timestamptz
+  deleted_at  timestamptz,
+  -- Savings goal target in cents (null = regular category); added by migration-goals-and-order.sql
+  goal_cents  bigint check (goal_cents is null or (goal_cents > 0 and goal_cents <= 999999999)),
+  -- Drag-and-drop position, 0 = top (null = never reordered, sorts by created_at)
+  sort_order  integer check (sort_order is null or sort_order >= 0)
 );
 
 -- No two active categories with the same name (case-insensitive) per user
