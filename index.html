@@ -24,6 +24,7 @@
   --green: #6dff6d; --red: #ff9292; --gray: #a9c9a9;
   --goal-tint: rgba(0, 40, 20, .35); /* goal rows: a slightly deeper forest green */
   --amber: #ffc31f; /* savings goal still in progress (red stays reserved for problems) */
+  --paid: #4ff4ff; /* bill paid: a bright "success" aqua, distinct from the chartreuse used for "Goal met!" */
   --font-px: "Press Start 2P", "Courier New", monospace;
   --font-ui: "Pixelify Sans", "Trebuchet MS", system-ui, sans-serif;
   --tabbar-h: 78px;
@@ -42,6 +43,7 @@ html, body { min-height: 100%; }
 body {
   background: var(--void); color: var(--white); font-family: var(--font-ui); font-size: 17px; line-height: 1.4;
   -webkit-font-smoothing: none;
+  font-variant-ligatures: none; /* Pixelify Sans joins "fi" into one glyph that reads like an "A" */
 }
 #bg { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; image-rendering: pixelated; display: block; }
 button, input, select { font: inherit; color: inherit; }
@@ -131,6 +133,7 @@ button { cursor: pointer; }
 .cat-bal.zero { color: var(--gray); }
 .cat-bal.goal, .sheet-bal.goal { color: var(--amber); }
 .cat-bal.met, .sheet-bal.met { color: var(--yellow); }
+.cat-bal.paid, .sheet-bal.paid { color: var(--paid); }
 
 /* Savings goals: a segmented pixel progress bar, gold while saving, chartreuse when met */
 .goal-row { display: flex; align-items: center; gap: 10px; width: 100%; padding-left: 17px; }
@@ -147,6 +150,21 @@ button { cursor: pointer; }
 .goal-box .goal-row { padding-left: 0; }
 .goal-box p { margin: 0; font-size: 15px; font-weight: 700; }
 .goal-box .btn { align-self: flex-start; }
+/* Bills: same bar as goals, plus a BILL tag; aqua with a check mark once paid */
+.tag { flex: none; font-family: var(--font-px); font-size: 8px; line-height: 1; padding: 4px 5px 3px; color: #000; background: var(--amber); text-shadow: none; text-transform: uppercase; clip-path: var(--notch); }
+.paid-cat .tag { background: var(--paid); }
+.bar.paid > i { background: repeating-linear-gradient(90deg, var(--paid) 0 6px, transparent 6px 8px); }
+.goal-txt.paid { color: var(--paid); }
+/* Pixel-art check mark (the pixel font has no ✓), drawn in the text colour */
+.chk { display: inline-block; position: relative; width: 14px; height: 12px; margin-right: 6px; vertical-align: -2px; }
+.chk::before { content: ""; position: absolute; left: 0; top: 0; width: 2px; height: 2px;
+  box-shadow: 12px 0 currentColor, 10px 2px currentColor, 12px 2px currentColor, 0 4px currentColor, 8px 4px currentColor, 10px 4px currentColor,
+    0 6px currentColor, 2px 6px currentColor, 6px 6px currentColor, 8px 6px currentColor, 2px 8px currentColor, 4px 8px currentColor, 6px 8px currentColor, 4px 10px currentColor; }
+.cat.paid-cat { background: rgba(0, 60, 70, .45); }
+.goal-box.paid { box-shadow: inset 0 0 0 3px var(--paid), 0 0 10px rgba(79, 244, 255, .35); }
+.goal-box.paid p { color: var(--paid); }
+.goal-box .btns { display: flex; gap: 10px; flex-wrap: wrap; }
+.btn.paid { background: var(--paid); box-shadow: inset -3px -3px 0 #0a9aa6, inset 3px 3px 0 #c8fcff; }
 
 /* Reorder mode: drag a row by its grip (or focus the grip and use the arrow keys) */
 .list-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: -4px; }
@@ -418,7 +436,12 @@ function compute(categories, transactions) {
   }
   let assigned = 0, positive = 0;
   for (const c of categories) if (!c.deletedAt) { const b = bal[c.id] || 0; assigned += b; if (b > 0) positive += b; }
-  return { total, bal, rta: total - assigned, available: total - positive };
+  // Bills: a bill is Paid while its payment transaction exists and hasn't been Reset.
+  // Deleting the payment from History therefore un-marks Paid automatically.
+  const paid = {};
+  for (const t of transactions) if (t.bill === 'paid' && t.cat && (!paid[t.cat] || (t.createdAt || 0) > (paid[t.cat].createdAt || 0))) paid[t.cat] = t;
+  for (const c of categories) if (!c.bill) delete paid[c.id];
+  return { total, bal, rta: total - assigned, available: total - positive, paid };
 }
 // Part of a spend the category can't pay for; always charged to Ready to Assign
 function shortfallFor(balance, amount) {
@@ -449,9 +472,11 @@ function sanitize(raw) {
   const s = raw && typeof raw === 'object' ? raw : {};
   const categories = (Array.isArray(s.categories) ? s.categories : [])
     .filter(c => c && typeof c === 'object' && c.id && typeof c.name === 'string')
-    .map(c => (c.goal == null || (Number.isInteger(c.goal) && c.goal > 0 && c.goal <= MAX_CENTS)) ? c : { ...c, goal: null });
+    .map(c => (c.goal == null || (Number.isInteger(c.goal) && c.goal > 0 && c.goal <= MAX_CENTS)) ? c : { ...c, goal: null })
+    .map(c => ({ ...c, bill: c.bill === true && c.goal > 0 })); // a bill always needs an amount
   const transactions = (Array.isArray(s.transactions) ? s.transactions : [])
-    .filter(t => t && typeof t === 'object' && t.id && TX_TYPES.includes(t.type) && Number(t.amount) > 0 && Number.isFinite(Number(t.amount)));
+    .filter(t => t && typeof t === 'object' && t.id && TX_TYPES.includes(t.type) && Number(t.amount) > 0 && Number.isFinite(Number(t.amount)))
+    .map(t => ({ ...t, bill: t.type === 'spend' && (t.bill === 'paid' || t.bill === 'reset') ? t.bill : null }));
   return { categories, transactions };
 }
 // What a change would do. Blocks any active category going (further) negative;
@@ -658,16 +683,19 @@ function stamp() { lastTs = Math.max(Date.now(), lastTs + 1); return lastTs; }
 const rowToCat = r => ({
   id: r.id, name: r.name, createdAt: Date.parse(r.created_at) || 0, deletedAt: r.deleted_at ? Date.parse(r.deleted_at) : null,
   goal: r.goal_cents == null ? null : Number(r.goal_cents),
-  order: r.sort_order == null ? null : Number(r.sort_order)
+  order: r.sort_order == null ? null : Number(r.sort_order),
+  bill: r.is_bill === true
 });
 const rowToTx = r => ({
   id: r.id, type: r.type, amount: Number(r.amount_cents), cat: r.category_id, to: r.to_category_id,
-  covered: Number(r.covered_cents || 0), note: r.note || '', date: r.tx_date, createdAt: Date.parse(r.created_at) || 0
+  covered: Number(r.covered_cents || 0), note: r.note || '', date: r.tx_date, createdAt: Date.parse(r.created_at) || 0,
+  bill: r.bill || null
 });
-const txToRow = t => ({
+// `bill` is only sent when set, so everyday saves still work before the bills migration is run
+const txToRow = t => Object.assign({
   type: t.type, amount_cents: t.amount, category_id: t.cat || null, to_category_id: t.to || null,
   covered_cents: t.covered || 0, note: t.note || null, tx_date: t.date
-});
+}, t.bill ? { bill: t.bill } : {});
 
 function makeSupabaseStore(sb, uid) {
   let cats = [], txs = [], cb = null, timer = null, channel = null;
@@ -705,9 +733,10 @@ function makeSupabaseStore(sb, uid) {
       document.removeEventListener('visibilitychange', onVisible);
       if (channel) { sb.removeChannel(channel); channel = null; }
     },
-    async addCategory(name, goal) {
+    async addCategory(name, goal, bill) {
       const row = { name };
       if (goal) row.goal_cents = goal;
+      if (bill) row.is_bill = true;
       const { data, error } = await sb.from('categories').insert(row).select().single();
       if (error) throw error;
       cats.push(rowToCat(data)); emit(); return data.id;
@@ -732,9 +761,17 @@ function makeSupabaseStore(sb, uid) {
       if ('name' in patch) row.name = patch.name;
       if ('deletedAt' in patch) row.deleted_at = patch.deletedAt ? new Date(patch.deletedAt).toISOString() : null;
       if ('goal' in patch) row.goal_cents = patch.goal || null;
+      if ('bill' in patch) row.is_bill = !!patch.bill;
       const { data, error } = await sb.from('categories').update(row).eq('id', id).select().single();
       if (error) throw error;
       cats = cats.map(c => c.id === id ? rowToCat(data) : c); emit();
+    },
+    // Reset a paid bill: its payment stays in History but no longer counts as "Paid"
+    async resetBill(catId) {
+      const { data, error } = await sb.from('transactions').update({ bill: 'reset' }).eq('category_id', catId).eq('bill', 'paid').select();
+      if (error) throw error;
+      const done = new Map((data || []).map(r => [r.id, rowToTx(r)]));
+      txs = txs.map(t => done.get(t.id) || t); emit();
     },
     // Save a new category order: ids in display order, position = sort_order
     async reorder(ids) {
@@ -784,6 +821,8 @@ const orderKey = c => (c.order == null ? Infinity : c.order);
 const activeCats = () => data.categories.filter(c => !c.deletedAt)
   .sort((a, b) => (orderKey(a) - orderKey(b)) || ((a.createdAt || 0) - (b.createdAt || 0)));
 const catById = id => data.categories.find(c => c.id === id);
+// The payment transaction when this bill is currently Paid, otherwise null
+const paidTx = c => (c && c.bill && calc.paid[c.id]) || null;
 function catLabel(id) {
   if (!id) return 'Ready to Assign';
   const c = catById(id);
@@ -829,20 +868,22 @@ function render() {
   rb.textContent = reordering ? 'Done' : 'Reorder'; rb.classList.toggle('primary', reordering);
   list.innerHTML = cats.map(c => {
     const b = calc.bal[c.id] || 0;
-    const g = goalInfo(c.goal, b);
-    const cls = b < 0 ? 'neg' : g ? (g.done ? 'met' : 'goal') : (b === 0 ? 'zero' : '');
-    const li = g ? 'cat goal-cat' : 'cat';
+    const g = goalInfo(c.goal, b), p = paidTx(c);
+    const cls = p ? 'paid' : b < 0 ? 'neg' : g ? (g.done ? 'met' : 'goal') : (b === 0 ? 'zero' : '');
+    const li = p ? 'cat goal-cat paid-cat' : g ? 'cat goal-cat' : 'cat';
+    const tag = c.bill ? '<span class="tag">Bill</span>' : '';
+    const row = g ? goalRow(g, b, c, p) : '';
     if (reordering) return `<li class="${li}" data-id="${esc(c.id)}">
       <button type="button" class="grip" data-grip aria-label="Move ${esc(c.name)}. Use the up and down arrow keys."></button>
       <div class="cat-body"><span class="cat-line">
-      <span class="cat-name">${esc(c.name)}</span>
+      <span class="cat-name">${esc(c.name)}</span>${tag}
       <span class="lead" aria-hidden="true"></span>
-      <span class="cat-bal num ${cls}">${fmt(b)}</span></span>${g ? goalRow(g, b) : ''}</div></li>`;
+      <span class="cat-bal num ${cls}">${fmt(b)}</span></span>${row}</div></li>`;
     return `<li class="${li}"><button data-action="open-cat" data-id="${esc(c.id)}">
       <span class="cat-line"><span class="cur" aria-hidden="true"></span>
-      <span class="cat-name">${esc(c.name)}</span>
+      <span class="cat-name">${esc(c.name)}</span>${tag}
       <span class="lead" aria-hidden="true"></span>
-      <span class="cat-bal num ${cls}">${fmt(b)}</span></span>${g ? goalRow(g, b) : ''}</button></li>`;
+      <span class="cat-bal num ${cls}">${fmt(b)}</span></span>${row}</button></li>`;
   }).join('');
   if (refocusId) {
     const gEl = [...list.querySelectorAll('[data-grip]')].find(x => x.closest('.cat').dataset.id === refocusId);
@@ -853,10 +894,16 @@ function render() {
   if (sheet) refreshSheet();
 }
 
-function goalRow(g, b) {
-  const txt = b < 0 ? 'Overspent' : g.done ? 'Goal met!' : fmt(g.left) + ' to go';
+function goalRow(g, b, c, p) {
+  if (p) {
+    const when = fmtDate(p.date);
+    return `<span class="goal-row" role="img" aria-label="Bill paid${when ? ' on ' + esc(when) : ''}"><span class="bar paid"><i style="width:100%"></i></span>
+    <span class="goal-txt num paid"><i class="chk" aria-hidden="true"></i>Paid ${esc(when)}</span></span>`;
+  }
+  const bill = c && c.bill;
+  const txt = b < 0 ? 'Overspent' : g.done ? (bill ? 'Ready to pay' : 'Goal met!') : fmt(g.left) + ' to go';
   const cls = b < 0 ? 'neg' : g.done ? 'done' : '';
-  return `<span class="goal-row" role="img" aria-label="${g.pct}% of ${esc(fmt(g.goal))} goal"><span class="bar${g.done ? ' done' : ''}"><i style="width:${g.pct}%"></i></span>
+  return `<span class="goal-row" role="img" aria-label="${g.pct}% of ${esc(fmt(g.goal))} ${bill ? 'bill' : 'goal'}"><span class="bar${g.done ? ' done' : ''}"><i style="width:${g.pct}%"></i></span>
     <span class="goal-txt num ${cls}">${esc(txt)}</span></span>`;
 }
 
@@ -865,7 +912,8 @@ function txView(t, ctxCat) {
   let title, amt, cls, extra = '';
   if (t.type === 'income') { title = 'Income'; amt = '+' + fmt(a); cls = 'pos'; }
   else if (t.type === 'spend') {
-    title = ctxCat ? 'Spent' : 'Spent · ' + catLabel(t.cat);
+    const verb = t.bill ? 'Paid bill' : 'Spent';
+    title = ctxCat ? verb : verb + ' · ' + catLabel(t.cat);
     amt = '−' + fmt(a).replace('−', ''); cls = 'neg';
     if (t.covered) extra = 'Covered ' + fmt(t.covered) + ' from Ready to Assign';
   } else if (t.type === 'assign') {
@@ -953,6 +1001,12 @@ function closeSheet() {
 }
 
 const GOAL_HINT = 'Shows gold until its balance reaches the goal. You can still spend and move this money.';
+const BILL_HINT = 'Fill it like a goal. When it’s full, tap Pay bill to spend it all. It shows Paid until you Reset it.';
+const TYPE_INFO = {
+  regular: { ph: 'Groceries', hint: 'For everyday spending like groceries or gas.' },
+  goal: { ph: 'Vacation', hint: GOAL_HINT, label: 'Goal amount' },
+  bill: { ph: 'Rent', hint: BILL_HINT, label: 'Bill amount' }
+};
 
 function renderSheet() {
   const el = $('sheet');
@@ -963,15 +1017,16 @@ function renderSheet() {
       <p class="err" id="f-err" role="alert"></p>
       <div class="actions"><button class="btn primary" type="submit" id="f-submit">Add income</button></div></form>`;
   } else if (sheet.kind === 'new-cat') {
-    const isGoal = sheet.catType === 'goal';
+    const ty = sheet.catType, info = TYPE_INFO[ty];
     el.innerHTML = head('Categories', 'New category') + `<form class="form" id="f" novalidate>
-      <div class="seg two" role="group" aria-label="Category type">
-        <button type="button" data-action="cat-type" data-type="regular" aria-pressed="${!isGoal}">Regular</button>
-        <button type="button" data-action="cat-type" data-type="goal" aria-pressed="${isGoal}">Savings goal</button>
+      <div class="seg" role="group" aria-label="Category type">
+        <button type="button" data-action="cat-type" data-type="regular" aria-pressed="${ty === 'regular'}">Regular</button>
+        <button type="button" data-action="cat-type" data-type="goal" aria-pressed="${ty === 'goal'}">Goal</button>
+        <button type="button" data-action="cat-type" data-type="bill" aria-pressed="${ty === 'bill'}">Bill</button>
       </div>
-      <label class="field"><span>Name</span><input id="f-name" maxlength="40" placeholder="${isGoal ? 'Vacation' : 'Groceries'}" autocomplete="off"></label>
-      <div id="goal-field" ${isGoal ? '' : 'hidden'}>${moneyField('Goal amount', 'f-goal')}</div>
-      <p class="hint" id="type-hint">${isGoal ? GOAL_HINT : 'For everyday spending like groceries or gas.'}</p>
+      <label class="field"><span>Name</span><input id="f-name" maxlength="40" placeholder="${info.ph}" autocomplete="off"></label>
+      <div id="goal-field" ${ty === 'regular' ? 'hidden' : ''}>${moneyField(info.label || 'Goal amount', 'f-goal')}</div>
+      <p class="hint" id="type-hint">${info.hint}</p>
       <p class="err" id="f-err" role="alert"></p>
       <div class="actions"><button class="btn primary" type="submit" id="f-submit">Create category</button></div></form>`;
   } else if (sheet.kind === 'rename') {
@@ -981,15 +1036,19 @@ function renderSheet() {
       <p class="err" id="f-err" role="alert"></p>
       <div class="actions"><button class="btn primary" type="submit" id="f-submit">Save name</button><button class="btn" type="button" data-action="back">Cancel</button></div></form>`;
   } else if (sheet.kind === 'goal') {
+    // Set the amount for a savings goal (sheet.bill false) or a bill (sheet.bill true)
     const c = catById(sheet.catId);
-    const has = !!(c && c.goal > 0);
-    el.innerHTML = head(has ? 'Savings goal' : 'Category', (has ? 'Edit goal: ' : 'Make a goal: ') + (c ? c.name : '')) + `<form class="form" id="f" novalidate>
-      ${moneyField('Goal amount', 'f-goal')}
-      <p class="hint">${GOAL_HINT}</p>
+    const bill = !!sheet.bill, word = bill ? 'bill' : 'goal';
+    const same = !!(c && c.goal > 0 && c.bill === bill); // editing, not converting
+    const other = bill ? `<button type="button" class="btn small" data-action="goal-cat" data-bill="0">Make it a savings goal</button>`
+      : `<button type="button" class="btn small" data-action="goal-cat" data-bill="1">Make it a bill</button>`;
+    el.innerHTML = head(c && c.goal ? (c.bill ? 'Bill' : 'Savings goal') : 'Category', (same ? `Edit ${word}: ` : bill ? 'Make it a bill: ' : 'Make a goal: ') + (c ? c.name : '')) + `<form class="form" id="f" novalidate>
+      ${moneyField(TYPE_INFO[word].label, 'f-goal')}
+      <p class="hint">${TYPE_INFO[word].hint}</p>
       <p class="err" id="f-err" role="alert"></p>
-      <div class="actions"><button class="btn primary" type="submit" id="f-submit">Save goal</button><button class="btn" type="button" data-action="back">Cancel</button></div>
-      ${has ? `<div class="cat-tools"><button type="button" class="btn small" data-action="clear-goal">Make it a regular category</button></div>` : ''}</form>`;
-    if (has) $('f-goal').value = (c.goal / 100).toFixed(2);
+      <div class="actions"><button class="btn primary" type="submit" id="f-submit">Save ${word}</button><button class="btn" type="button" data-action="back">Cancel</button></div>
+      ${same ? `<div class="cat-tools"><button type="button" class="btn small" data-action="clear-goal">Make it a regular category</button>${other}</div>` : ''}</form>`;
+    if (c && c.goal > 0) $('f-goal').value = (c.goal / 100).toFixed(2);
   } else if (sheet.kind === 'tx') {
     const t = data.transactions.find(x => x.id === sheet.txId);
     if (!t) { closeSheet(); return; }
@@ -1005,13 +1064,21 @@ function renderSheet() {
   } else if (sheet.kind === 'cat') {
     const c = catById(sheet.catId);
     const m = sheet.mode;
-    el.innerHTML = head(c && c.goal ? 'Savings goal' : 'Category', c ? c.name : '') + `
+    const tools = !c ? '' : c.bill ? `<button type="button" class="btn small" data-action="goal-cat" data-bill="1">Edit bill</button>`
+      : c.goal ? `<button type="button" class="btn small" data-action="goal-cat" data-bill="0">Edit goal</button>`
+      : `<button type="button" class="btn small" data-action="goal-cat" data-bill="0">Make it a goal</button><button type="button" class="btn small" data-action="goal-cat" data-bill="1">Make it a bill</button>`;
+    el.innerHTML = head(c && c.goal ? (c.bill ? 'Bill' : 'Savings goal') : 'Category', c ? c.name : '') + `
       <p class="sheet-bal num" data-live="bal"></p>
       <div class="goal-box" data-live="goal" hidden>
         <span class="goal-row"><span class="bar"><i></i></span><span class="goal-txt num"></span></span>
         <p data-live="goal-line"></p>
-        <button type="button" class="btn small primary" data-action="fund" data-live="fund-btn" hidden></button>
+        <div class="btns">
+          <button type="button" class="btn small primary" data-action="fund" data-live="fund-btn" hidden></button>
+          <button type="button" class="btn small paid" data-action="pay-bill" data-live="pay-btn" hidden></button>
+          <button type="button" class="btn small paid" data-action="reset-bill" data-live="reset-btn" hidden>Reset</button>
+        </div>
       </div>
+      <div data-live="act" style="display:flex;flex-direction:column;gap:14px">
       <div class="seg" role="group" aria-label="Action">
         <button type="button" data-action="mode" data-mode="spend" aria-pressed="${m === 'spend'}">Spend</button>
         <button type="button" data-action="mode" data-mode="assign" aria-pressed="${m === 'assign'}">Assign</button>
@@ -1028,9 +1095,10 @@ function renderSheet() {
         <div class="actions" id="f-actions"><button class="btn primary" type="submit" id="f-submit"></button></div>
         <div class="cover win bad" id="f-cover" hidden></div>
       </form>
+      </div>
       <h3>Recent</h3>
       <ul class="tx-list" data-live="recent"></ul>
-      <div class="cat-tools"><button type="button" class="btn small" data-action="rename-cat">Rename</button><button type="button" class="btn small" data-action="goal-cat">${c && c.goal ? 'Edit goal' : 'Make it a goal'}</button><button type="button" class="btn small danger" data-action="del-cat" id="btn-del-cat">Delete category</button></div>`;
+      <div class="cat-tools"><button type="button" class="btn small" data-action="rename-cat">Rename</button>${tools}<button type="button" class="btn small danger" data-action="del-cat" id="btn-del-cat">Delete category</button></div>`;
     applyMode();
     refreshSheet();
   }
@@ -1061,35 +1129,51 @@ function refreshSheet() {
   const el = $('sheet');
   const b = calc.bal[c.id] || 0;
   const balEl = el.querySelector('[data-live="bal"]');
-  const g = goalInfo(c.goal, b);
+  const g = goalInfo(c.goal, b), p = paidTx(c);
   balEl.textContent = fmt(b);
-  balEl.classList.toggle('neg', b < 0);
-  balEl.classList.toggle('goal', !!g && b >= 0 && !g.done);
-  balEl.classList.toggle('met', !!g && g.done);
+  balEl.classList.toggle('neg', b < 0 && !p);
+  balEl.classList.toggle('goal', !!g && !p && b >= 0 && !g.done);
+  balEl.classList.toggle('met', !!g && !p && g.done);
+  balEl.classList.toggle('paid', !!p);
 
-  // Savings goal panel: progress, what's left, and a one-tap Fund button
+  // Goal / bill panel: progress, what's left, and one-tap Fund, Pay bill or Reset buttons
   const gb = el.querySelector('[data-live="goal"]');
+  const fb = gb.querySelector('[data-live="fund-btn"]'), pb = gb.querySelector('[data-live="pay-btn"]'), rb = gb.querySelector('[data-live="reset-btn"]');
   gb.hidden = !g;
+  fb.hidden = pb.hidden = rb.hidden = true;
   if (g) {
-    gb.classList.toggle('done', g.done);
-    gb.querySelector('.bar').classList.toggle('done', g.done);
-    gb.querySelector('.bar > i').style.width = g.pct + '%';
-    const gt = gb.querySelector('.goal-txt');
-    gt.textContent = g.pct + '%'; gt.className = 'goal-txt num' + (b < 0 ? ' neg' : g.done ? ' done' : '');
+    const bar = gb.querySelector('.bar'), gt = gb.querySelector('.goal-txt');
+    gb.classList.toggle('done', g.done && !p);
+    gb.classList.toggle('paid', !!p);
+    bar.classList.toggle('done', g.done && !p);
+    bar.classList.toggle('paid', !!p);
+    gb.querySelector('.bar > i').style.width = (p ? 100 : g.pct) + '%';
+    if (p) gt.innerHTML = '<i class="chk" aria-hidden="true"></i>Paid'; else gt.textContent = g.pct + '%';
+    gt.className = 'goal-txt num' + (p ? ' paid' : b < 0 ? ' neg' : g.done ? ' done' : '');
+    const word = c.bill ? 'Bill' : 'Goal';
     const canFund = Math.min(g.left, calc.rta, calc.available);
-    let line = g.done ? `Goal met! ${fmt(g.goal)} saved.` : `Goal ${fmt(g.goal)} · ${fmt(g.left)} to go`;
-    if (!g.done && canFund <= 0) line += '. Add income to keep saving.';
-    else if (!g.done && canFund < g.left) line += `. ${fmt(canFund)} is ready to assign.`;
+    let line;
+    if (p) line = `Paid ${fmt(num(p.amount))}${p.date ? ' on ' + fmtDate(p.date) : ''}. Tap Reset to start filling it for next time.`;
+    else if (g.done) line = c.bill ? `Ready to pay! ${fmt(b)} saved.` : `Goal met! ${fmt(g.goal)} saved.`;
+    else {
+      line = `${word} ${fmt(g.goal)} · ${fmt(g.left)} to go`;
+      if (canFund <= 0) line += '. Add income to keep saving.';
+      else if (canFund < g.left) line += `. ${fmt(canFund)} is ready to assign.`;
+    }
     gb.querySelector('[data-live="goal-line"]').textContent = line;
-    const fb = gb.querySelector('[data-live="fund-btn"]');
-    fb.hidden = g.done || canFund <= 0;
+    fb.hidden = !!p || g.done || canFund <= 0;
     fb.textContent = `Fund ${fmt(Math.max(canFund, 0))}`; fb.dataset.amt = String(Math.max(canFund, 0));
+    pb.hidden = !(c.bill && !p && g.done && b > 0);
+    if (!pb.dataset.armed) pb.textContent = `Pay bill ${fmt(b)}`;
+    rb.hidden = !p;
   }
+  // A paid bill is locked: no spending, assigning or moving until it's Reset
+  el.querySelector('[data-live="act"]').hidden = !!p;
 
   const m = sheet.mode;
   let hint;
   if (m === 'spend') hint = b < 0 ? `Overspent by ${fmt(-b)}.` : `Available to spend: ${fmt(b)}`;
-  else if (m === 'assign') hint = `Ready to Assign: ${fmt(calc.rta)}` + (g ? (g.done ? ' · Goal already met' : ` · Goal needs ${fmt(g.left)}`) : '');
+  else if (m === 'assign') hint = `Ready to Assign: ${fmt(calc.rta)}` + (g ? (g.done ? (c.bill ? ' · Bill is full' : ' · Goal already met') : ` · ${c.bill ? 'Bill' : 'Goal'} needs ${fmt(g.left)}`) : '');
   else hint = `Available to move: ${fmt(Math.max(b, 0))}`;
   el.querySelector('[data-live="hint"]').textContent = hint;
 
@@ -1097,9 +1181,11 @@ function refreshSheet() {
   const prev = sel.value;
   const others = activeCats().filter(x => x.id !== c.id);
   sel.innerHTML = '<option value="">Return to Ready to Assign</option>' + (others.length
-    ? '<optgroup label="Another category">' + others.map(o => `<option value="${esc(o.id)}">${esc(o.name)}</option>`).join('') + '</optgroup>'
+    ? '<optgroup label="Another category">' + others.map(o => paidTx(o)
+        ? `<option value="${esc(o.id)}" disabled>${esc(o.name)} (paid)</option>`
+        : `<option value="${esc(o.id)}">${esc(o.name)}</option>`).join('') + '</optgroup>'
     : '');
-  if (prev === '' || others.some(o => o.id === prev)) sel.value = prev;
+  if (prev === '' || others.some(o => o.id === prev && !paidTx(o))) sel.value = prev;
   setSubmitLabel();
 
   // Negative Ready to Assign: offer a one-tap fill to pay it back from this category
@@ -1163,6 +1249,7 @@ function toast(msg, bad) {
 }
 function writeError(e) {
   if (e && e.code === '23505') return 'You already have a category with that name.';
+  if (e && /is_bill|'bill'|transactions_bill/.test(e.message || '')) return 'Bills need a one-time database update. Run migration-bills.sql in Supabase.';
   if (e && (e.code === 'PGRST204' || e.code === '42703' || /goal_cents|sort_order/.test(e.message || ''))) return 'Goals and reordering need a one-time database update. Run the migration SQL in Supabase.';
   if (e && (e.code === 'PGRST301' || e.status === 401 || /jwt/i.test(e.message || ''))) return 'Your session expired. Sign in again.';
   return "Couldn't save that. Check your connection and try again.";
@@ -1192,25 +1279,33 @@ async function submitFormInner() {
     if (!name) { err.textContent = 'Give the category a name.'; return; }
     if (activeCats().some(c => c.name.toLowerCase() === name.toLowerCase())) { err.textContent = `You already have a category called ${name}.`; return; }
     let goal = null;
-    if (sheet.catType === 'goal') {
+    const bill = sheet.catType === 'bill';
+    if (sheet.catType !== 'regular') {
       goal = parseCents($('f-goal').value);
-      if (goal === Infinity) { err.textContent = 'Goals can be up to $9,999,999.99.'; return; }
-      if (!goal) { err.textContent = 'Enter a goal amount like 500.00.'; return; }
+      if (goal === Infinity) { err.textContent = `${bill ? 'Bills' : 'Goals'} can be up to $9,999,999.99.`; return; }
+      if (!goal) { err.textContent = `Enter a ${bill ? 'bill' : 'goal'} amount like ${bill ? '1200.00' : '500.00'}.`; return; }
     }
     let id;
-    const ok = await run(btn, async () => { id = await store.addCategory(name, goal); });
-    if (ok) { toast(goal ? `Created ${name} · goal ${fmt(goal)}` : `Created ${name}`); openSheet({ kind: 'cat', catId: id, mode: 'assign' }); }
+    const ok = await run(btn, async () => { id = await store.addCategory(name, goal, bill); });
+    if (ok) { toast(goal ? `Created ${name} · ${bill ? 'bill' : 'goal'} ${fmt(goal)}` : `Created ${name}`); openSheet({ kind: 'cat', catId: id, mode: 'assign' }); }
     return;
   }
   if (sheet.kind === 'goal') {
     const c = catById(sheet.catId);
     if (!c || c.deletedAt) { closeSheet(); return; }
+    const bill = !!sheet.bill;
     const goal = parseCents($('f-goal').value);
-    if (goal === Infinity) { err.textContent = 'Goals can be up to $9,999,999.99.'; return; }
-    if (!goal) { err.textContent = 'Enter a goal amount like 500.00.'; return; }
-    if (goal === c.goal) { backFromSheet(); return; }
-    const ok = await run(btn, () => store.updateCategory(c.id, { goal }));
-    if (ok) { toast((calc.bal[c.id] || 0) >= goal ? `Goal set to ${fmt(goal)} · already met!` : `Goal set to ${fmt(goal)}`); backFromSheet(); }
+    if (goal === Infinity) { err.textContent = `${bill ? 'Bills' : 'Goals'} can be up to $9,999,999.99.`; return; }
+    if (!goal) { err.textContent = `Enter a ${bill ? 'bill' : 'goal'} amount like ${bill ? '1200.00' : '500.00'}.`; return; }
+    if (goal === c.goal && c.bill === bill) { backFromSheet(); return; }
+    const patch = { goal };
+    if (c.bill !== bill) patch.bill = bill; // only touch the bills column when the type changes
+    const ok = await run(btn, async () => {
+      if (c.bill && !bill && paidTx(c)) await store.resetBill(c.id); // leaving bills behind clears Paid
+      await store.updateCategory(c.id, patch);
+    });
+    const full = (calc.bal[c.id] || 0) >= goal;
+    if (ok) { toast(bill ? `Bill set to ${fmt(goal)}` + (full && !paidTx(c) ? ' · ready to pay!' : '') : full ? `Goal set to ${fmt(goal)} · already met!` : `Goal set to ${fmt(goal)}`); backFromSheet(); }
     return;
   }
   if (sheet.kind === 'rename') {
@@ -1238,6 +1333,7 @@ async function submitFormInner() {
 
   const c = catById(sheet.catId);
   const b = calc.bal[c.id] || 0;
+  if (paidTx(c)) { err.textContent = `${c.name} is paid. Tap Reset to use it again.`; return; }
   if (sheet.mode === 'spend') {
     const short = shortfallFor(b, amount);
     if (short > 0) { showCover({ amount, note, date, short }); return; }
@@ -1246,7 +1342,8 @@ async function submitFormInner() {
     const free = Math.min(calc.rta, calc.available), room = roomFor(c, b);
     const avail = Math.min(free, room);
     if (amount > avail && room < free) {
-      err.textContent = room > 0 ? `${c.name} needs only ${fmt(room)} more to reach its ${fmt(c.goal)} goal.` : `${c.name} already reached its ${fmt(c.goal)} goal.`;
+      const w = c.bill ? 'bill amount' : 'goal';
+      err.textContent = room > 0 ? `${c.name} needs only ${fmt(room)} more to reach its ${fmt(c.goal)} ${w}.` : `${c.name} already reached its ${fmt(c.goal)} ${w}.`;
       return;
     }
     if (amount > avail) {
@@ -1261,8 +1358,10 @@ async function submitFormInner() {
     if (amount > b) { err.textContent = b > 0 ? `Only ${fmt(b)} is in ${c.name}.` : `${c.name} has nothing to move.`; return; }
     const to = $('f-to').value || null;
     const toCat = to && catById(to), toRoom = roomFor(toCat, calc.bal[to] || 0);
+    if (paidTx(toCat)) { err.textContent = `${toCat.name} is paid. Open it and tap Reset first.`; return; }
     if (amount > toRoom) {
-      err.textContent = toRoom > 0 ? `${toCat.name} needs only ${fmt(toRoom)} more to reach its ${fmt(toCat.goal)} goal.` : `${toCat.name} already reached its ${fmt(toCat.goal)} goal.`;
+      const w = toCat.bill ? 'bill amount' : 'goal';
+      err.textContent = toRoom > 0 ? `${toCat.name} needs only ${fmt(toRoom)} more to reach its ${fmt(toCat.goal)} ${w}.` : `${toCat.name} already reached its ${fmt(toCat.goal)} ${w}.`;
       return;
     }
     const ok = await run(btn, () => store.addTx({ type: 'move', amount, cat: c.id, to, covered: 0, note, date, createdAt: stamp() }));
@@ -1296,8 +1395,11 @@ async function saveTxEdit(amount, note, date) {
   if (im.block) { err.textContent = `Can't save: ${im.block}`; return; }
   // Assigning or moving more into a savings goal can't push it past the goal
   const intoId = t.type === 'assign' ? t.cat : t.type === 'move' ? t.to : null, into = intoId && catById(intoId);
+  if (paidTx(into) && (after.bal[intoId] || 0) > (calc.bal[intoId] || 0)) {
+    err.textContent = `Can't save: ${into.name} is paid. Tap Reset on it first.`; return;
+  }
   if (into && into.goal > 0 && (after.bal[intoId] || 0) > into.goal && (after.bal[intoId] || 0) > (calc.bal[intoId] || 0)) {
-    err.textContent = `Can't save: that would put ${into.name} over its ${fmt(into.goal)} goal.`; return;
+    err.textContent = `Can't save: that would put ${into.name} over its ${fmt(into.goal)} ${into.bill ? 'bill amount' : 'goal'}.`; return;
   }
   if (im.warn && !sheet.confirmWarn) { sheet.confirmWarn = true; err.textContent = `Heads up: ${im.warn}. Tap Save again to confirm.`; return; }
   const ok = await run(btn, () => store.updateTx(t.id, { amount, note, date, covered: num(next.covered) }));
@@ -1346,28 +1448,50 @@ document.addEventListener('click', e => {
   else if (a === 'reorder') { reordering = !reordering; render(); }
   else if (a === 'cat-type') {
     if (!sheet || sheet.kind !== 'new-cat') return;
-    const goal = el.dataset.type === 'goal';
-    sheet.catType = goal ? 'goal' : 'regular';
+    const ty = TYPE_INFO[el.dataset.type] ? el.dataset.type : 'regular', info = TYPE_INFO[ty];
+    sheet.catType = ty;
     $('sheet').querySelectorAll('[data-action="cat-type"]').forEach(b => b.setAttribute('aria-pressed', String(b === el)));
-    $('goal-field').hidden = !goal;
-    $('f-name').placeholder = goal ? 'Vacation' : 'Groceries';
-    $('type-hint').textContent = goal ? GOAL_HINT : 'For everyday spending like groceries or gas.';
+    $('goal-field').hidden = ty === 'regular';
+    if (info.label) { $('goal-field').querySelector('.field > span').textContent = info.label; $('f-goal').setAttribute('aria-label', info.label + ' in dollars'); }
+    $('f-name').placeholder = info.ph;
+    $('type-hint').textContent = info.hint;
     $('f-err').textContent = '';
-    if (goal && $('f-name').value.trim()) $('f-goal').focus();
+    if (ty !== 'regular' && $('f-name').value.trim()) $('f-goal').focus();
   }
-  else if (a === 'goal-cat') openSheet({ kind: 'goal', catId: sheet.catId });
+  else if (a === 'goal-cat') openSheet({ kind: 'goal', catId: sheet.catId, bill: el.dataset.bill === '1' });
   else if (a === 'clear-goal') {
     const c = catById(sheet.catId); if (!c) return;
-    run(el, () => store.updateCategory(c.id, { goal: null })).then(ok => { if (ok) { toast(`${c.name} is a regular category now`); backFromSheet(); } });
+    const patch = c.bill ? { goal: null, bill: false } : { goal: null };
+    run(el, async () => { if (paidTx(c)) await store.resetBill(c.id); await store.updateCategory(c.id, patch); })
+      .then(ok => { if (ok) { toast(`${c.name} is a regular category now`); backFromSheet(); } });
+  }
+  else if (a === 'pay-bill') {
+    const c = catById(sheet.catId); if (!c || !c.bill) return;
+    const ready = () => { const b = calc.bal[c.id] || 0, g = goalInfo(c.goal, b); return g && g.done && b > 0 && !paidTx(c) ? b : 0; };
+    if (!ready()) { refreshSheet(); return; }
+    arm(el, `Pay bill ${fmt(ready())}`, `Tap again to pay ${fmt(ready())}`, () => {
+      // Re-check live numbers so a stale button can't pay twice or pay the wrong amount
+      const amt = ready(); if (!amt) { refreshSheet(); return; }
+      run(el, () => store.addTx({ type: 'spend', amount: amt, cat: c.id, to: null, covered: 0, note: '', date: today(), createdAt: stamp(), bill: 'paid' }))
+        .then(ok => { if (ok) toast(`Paid ${c.name} · ${fmt(amt)}`); });
+    });
+  }
+  else if (a === 'reset-bill') {
+    const c = catById(sheet.catId); if (!c || !paidTx(c)) return;
+    run(el, () => store.resetBill(c.id)).then(ok => {
+      if (!ok) return;
+      toast(`${c.name} reset · ready to refill`);
+      if (sheet && sheet.kind === 'cat' && sheet.catId === c.id) { sheet.mode = 'assign'; applyMode(); refreshSheet(); }
+    });
   }
   else if (a === 'fund') {
     const c = catById(sheet.catId), amt = Number(el.dataset.amt);
     if (!c || !(amt > 0)) return;
     // Re-check against live numbers so a stale button can't overfill or overdraw
     const g = goalInfo(c.goal, calc.bal[c.id] || 0);
-    if (!g || amt > Math.min(g.left, calc.rta, calc.available)) { refreshSheet(); return; }
-    run(el, () => store.addTx({ type: 'assign', amount: amt, cat: c.id, to: null, covered: 0, note: 'Goal funding', date: today(), createdAt: stamp() }))
-      .then(ok => { if (ok) toast(amt >= g.left ? `Funded ${fmt(amt)} · ${c.name} goal met!` : `Funded ${fmt(amt)} to ${c.name}`); });
+    if (!g || paidTx(c) || amt > Math.min(g.left, calc.rta, calc.available)) { refreshSheet(); return; }
+    run(el, () => store.addTx({ type: 'assign', amount: amt, cat: c.id, to: null, covered: 0, note: c.bill ? 'Bill funding' : 'Goal funding', date: today(), createdAt: stamp() }))
+      .then(ok => { if (ok) toast(amt >= g.left ? (c.bill ? `Funded ${fmt(amt)} · ${c.name} is ready to pay!` : `Funded ${fmt(amt)} · ${c.name} goal met!`) : `Funded ${fmt(amt)} to ${c.name}`); });
   }
   else if (a === 'open-cat') openSheet({ kind: 'cat', catId: el.dataset.id, mode: 'spend' });
   else if (a === 'close') closeSheet();

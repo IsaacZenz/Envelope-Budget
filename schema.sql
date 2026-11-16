@@ -1,6 +1,6 @@
 -- Envelope Budget: Supabase schema for go-live
 -- Run once in Supabase: SQL Editor > New query > paste > Run.
--- (For a fresh project only. An existing project runs supabase/migration-goals-and-order.sql instead.)
+-- (For a fresh project only. An existing project runs migration-goals-and-order.sql, then migration-bills.sql, instead.)
 -- Mirrors the prototype's data model exactly, so the page's storage layer
 -- swaps from the prototype store to Supabase without changing any money logic.
 --
@@ -26,7 +26,10 @@ create table public.categories (
   -- Savings goal target in cents (null = regular category); added by migration-goals-and-order.sql
   goal_cents  bigint check (goal_cents is null or (goal_cents > 0 and goal_cents <= 999999999)),
   -- Drag-and-drop position, 0 = top (null = never reordered, sorts by created_at)
-  sort_order  integer check (sort_order is null or sort_order >= 0)
+  sort_order  integer check (sort_order is null or sort_order >= 0),
+  -- Bill envelope: bill amount lives in goal_cents; added by migration-bills.sql
+  is_bill     boolean not null default false,
+  constraint categories_bill_amount_check check (not is_bill or goal_cents is not null)
 );
 
 -- No two active categories with the same name (case-insensitive) per user
@@ -44,6 +47,9 @@ create table public.transactions (
   note            text check (char_length(note) <= 80),
   tx_date         date not null default current_date,
   created_at      timestamptz not null default now(),
+  -- Bill payment marker: 'paid' = bill shows Paid until Reset, 'reset' = old payment; added by migration-bills.sql
+  bill            text,
+  constraint transactions_bill_check check (bill is null or (bill in ('paid', 'reset') and type = 'spend')),
   constraint tx_shape check (
     (type = 'income' and category_id is null and to_category_id is null and covered_cents = 0) or
     (type = 'assign' and category_id is not null and to_category_id is null and covered_cents = 0) or
