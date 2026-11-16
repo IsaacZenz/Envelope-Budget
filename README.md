@@ -10,6 +10,7 @@ A phone-first envelope budget. It's a static site (HTML, CSS and JS, with no bui
 | `config.js` | Your Supabase project URL and anon key |
 | `schema.sql` | Tables, security rules and live-update setup. Run it once, for a brand-new project. |
 | `migration-goals-and-order.sql` | Adds savings goals and custom order to an existing project. Already included in `schema.sql`. |
+| `migration-bills.sql` | Adds bill envelopes to an existing project. Run it after the goals migration. Already included in `schema.sql`. |
 | `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `favicon-32.png`, `manifest.webmanifest` | Home-screen icon and app name ("Envelopes") |
 
 ## Setup
@@ -61,3 +62,9 @@ Then open http://localhost:8000/.
 - [ ] Tap **Fund $X**. The goal fills, turns chartreuse and says "Goal met!". Spending from it turns it gold again.
 - [ ] **Make it a goal** on an existing category, **Edit goal**, then **Make it a regular category**. The money and history don't change.
 - [ ] Tap **Reorder**, drag rows by their grips, tap **Done**. The order stays after a refresh and on your other devices.
+- [ ] Create a **Bill** category ($120). It has a BILL tag and fills like a goal; assigning more than the bill is blocked.
+- [ ] Fill it to 100%. It says "Ready to pay". Tap **Pay bill**, then tap again to confirm. All the money is spent, and the envelope turns aqua and says "Paid" with a check mark and the date.
+- [ ] While it's Paid, you can't spend, assign or move money in. It shows "(paid)" and can't be picked in another category's Move list.
+- [ ] Tap **Reset**. It goes back to $0 with "$120.00 to go". The payment stays in History as "Paid bill".
+- [ ] Pay it again, then delete that payment in History. The money comes back and the envelope returns to "Ready to pay".
+- [ ] **Make it a bill** on a regular category or a goal, and **Make it a regular category** on a bill. The money and history don't change.
